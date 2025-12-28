@@ -23,7 +23,7 @@ For background on the memory concept, see Letta's docs on [memory](https://docs.
 
 ## Installation
 
-Add to your OpenCode config (`~/.config/opencode/config.json`):
+Add to your OpenCode config (`~/.config/opencode/opencode.json`):
 
 ```json
 {
