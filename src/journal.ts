@@ -350,6 +350,7 @@ export function buildJournalSystemNote(
 You have access to a private journal. Use it to record thoughts, discoveries, and decisions as you work.
 Tags are free-form strings — use them to classify entries however makes sense.${tagSection}
 
+Before starting complex tasks, search the journal for relevant past context.
 Journal entries are append-only: you write new entries but never edit old ones.
 Use journal_search to find past entries semantically, and journal_read to read a specific entry.
 The journal is global across all projects but each entry records which project it was written from.
