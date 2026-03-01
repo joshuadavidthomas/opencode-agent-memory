@@ -18,6 +18,16 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Added
+
+- Optional journal feature for capturing insights, decisions, and discoveries across sessions
+- Three journal tools: `journal_write`, `journal_search`, `journal_read`
+- Semantic search using local embeddings (all-MiniLM-L6-v2) - no data leaves your machine
+- Free-form tags for classifying journal entries, with optional suggested tags via config
+- Offset-based pagination for journal search results
+- Journal configuration via `~/.config/opencode/agent-memory.json`
+- Automatic metadata tracking: project, model, provider, agent, and session per entry
+
 ## [0.1.0]
 
 ### Added

@@ -16,6 +16,7 @@ For background on the memory concept, see Letta's docs on [memory](https://docs.
 - **Shared across sessions** - Global blocks shared across all projects, project blocks shared across sessions in that codebase
 - **Self-editing** - The agent can read and modify its own memory with dedicated tools
 - **System prompt injection** - Memory blocks appear in the system prompt, always in-context
+- **Journal** - Append-only entries with semantic search for capturing insights, decisions, and discoveries across sessions
 
 ## Requirements
 
@@ -55,6 +56,8 @@ ln -sf ~/.config/opencode/opencode-agent-memory/src/plugin.ts ~/.config/opencode
 
 ## Usage
 
+### Memory Tools
+
 The plugin gives the agent 3 tools for managing memory:
 
 | Tool | Description |
@@ -64,6 +67,18 @@ The plugin gives the agent 3 tools for managing memory:
 | `memory_replace` | Replace a substring within a memory block |
 
 You interact with memory by editing the markdown files directly or asking the agent to update its memory.
+
+### Journal Tools
+
+When the journal is enabled, the agent gets 3 additional tools:
+
+| Tool | Description |
+|------|-------------|
+| `journal_write` | Write a new journal entry with title, body, and optional tags |
+| `journal_search` | Search entries semantically, filter by project or tags, with pagination |
+| `journal_read` | Read a specific journal entry by ID |
+
+Journal entries are append-only markdown files with YAML frontmatter, stored in `~/.config/opencode/journal/`. Each entry records which project, model, provider, agent, and session it was written from. Semantic search uses local embeddings ([all-MiniLM-L6-v2](https://huggingface.co/Xenova/all-MiniLM-L6-v2)) - no data leaves your machine.
 
 ### Default Blocks
 
@@ -94,6 +109,34 @@ Each block is a markdown file with YAML frontmatter:
 | `read_only` | boolean | false | Prevent agent from modifying |
 
 All fields have defaults for graceful degradation, but `description` is essential - without it, the agent gets a generic fallback and won't know how to use the block effectively. See Letta's docs on [the importance of the description field](https://docs.letta.com/guides/agents/memory-blocks/#the-importance-of-the-description-field).
+
+### Journal Configuration
+
+The journal is opt-in. Enable it in `~/.config/opencode/agent-memory.json`:
+
+```json
+{
+  "journal": {
+    "enabled": true
+  }
+}
+```
+
+You can optionally suggest tags to guide the agent's classification:
+
+```json
+{
+  "journal": {
+    "enabled": true,
+    "tags": [
+      { "name": "perf", "description": "Performance optimization work" },
+      { "name": "debugging", "description": "Debugging sessions and findings" }
+    ]
+  }
+}
+```
+
+Tags are free-form strings - the agent can use any tag, not just the suggested ones. Suggested tags appear in the system prompt to provide guidance.
 
 ## Inspiration
 
