@@ -18,6 +18,8 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+## [0.2.0]
+
 ### Added
 
 - Optional journal feature with semantic search, tagging, and tools for capturing insights and decisions across sessions
@@ -39,5 +41,6 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 - Josh Thomas <josh@joshthomas.dev> (maintainer)
 
-[unreleased]: https://github.com/joshuadavidthomas/opencode-agent-memory/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/joshuadavidthomas/opencode-agent-memory/compare/v0.2.0...HEAD
 [0.1.0]: https://github.com/joshuadavidthomas/opencode-agent-memory/releases/tag/v0.1.0
+[0.2.0]: https://github.com/joshuadavidthomas/opencode-agent-memory/compare/v0.1.0...v0.2.0

@@ -1,6 +1,6 @@
 {
   "name": "opencode-agent-memory",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Letta-style editable memory blocks for OpenCode.",
   "author": "Josh Thomas <josh@joshthomas.dev>",
   "license": "MIT",
