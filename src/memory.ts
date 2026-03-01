@@ -5,6 +5,7 @@ import * as path from "node:path";
 import yaml from "js-yaml";
 import { z } from "zod";
 
+import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./frontmatter";
 import { getDefaultDescription } from "./letta";
 
 export type MemoryScope = "global" | "project";
@@ -29,24 +30,6 @@ const FrontmatterSchema = z.looseObject({
 });
 
 type ParsedFrontmatter = z.infer<typeof FrontmatterSchema>;
-
-function splitFrontmatter(text: string): {
-  frontmatterText: string | undefined;
-  body: string;
-} {
-  if (!text.startsWith("---\n")) {
-    return { frontmatterText: undefined, body: text };
-  }
-
-  const endIndex = text.indexOf("\n---\n", 4);
-  if (endIndex === -1) {
-    return { frontmatterText: undefined, body: text };
-  }
-
-  const frontmatterText = text.slice(4, endIndex);
-  const body = text.slice(endIndex + "\n---\n".length);
-  return { frontmatterText, body };
-}
 
 function parseFrontmatter(frontmatterText: string | undefined): ParsedFrontmatter {
   if (!frontmatterText) {
@@ -98,25 +81,17 @@ async function writeBlockFile(
   filePath: string,
   block: Pick<MemoryBlock, "label" | "description" | "limit" | "readOnly" | "value">,
 ): Promise<void> {
-  const frontmatter = {
-    label: block.label,
-    description: block.description,
-    limit: block.limit,
-    read_only: block.readOnly,
-  };
+  const content = buildFrontmatterDocument(
+    {
+      label: block.label,
+      description: block.description,
+      limit: block.limit,
+      read_only: block.readOnly,
+    },
+    block.value,
+  );
 
-  const frontmatterYaml = yaml.dump(frontmatter, {
-    lineWidth: 120,
-    noRefs: true,
-    sortKeys: true,
-  });
-
-  const content = `---\n${frontmatterYaml}---\n${block.value.trim()}\n`;
-
-  // Atomic write: write to temp file then rename
-  const tempPath = path.join(path.dirname(filePath), `.${path.basename(filePath)}.tmp`);
-  await fs.writeFile(tempPath, content, "utf-8");
-  await fs.rename(tempPath, filePath);
+  await atomicWriteFile(filePath, content);
 }
 
 function validateLabel(label: string): string {

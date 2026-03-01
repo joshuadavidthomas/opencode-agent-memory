@@ -14,9 +14,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
     "@opencode-ai/plugin": "^1.0.115",
     "js-yaml": "^4.1.0",
     "zod": "^4.1.13"
+  },
+  "overrides": {
+    "onnxruntime-node": "1.20.1"
   },
   "devDependencies": {
     "@tsconfig/bun": "^1.0.10",
