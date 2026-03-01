@@ -34,10 +34,6 @@ async function mkTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join("/tmp/", "opencode-journal-"));
 }
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
 describe("loadConfig", () => {
   test("returns empty config when file does not exist", async () => {
     const dir = await mkTmpDir();
@@ -93,10 +89,6 @@ describe("loadConfig", () => {
     expect(config).toEqual({});
   });
 });
-
-// ---------------------------------------------------------------------------
-// Journal Store
-// ---------------------------------------------------------------------------
 
 describe("journal store", () => {
   let tmpDir: string;

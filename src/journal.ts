@@ -8,10 +8,6 @@ import { z } from "zod";
 import { cosineSimilarity, generateEmbedding } from "./embeddings";
 import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./frontmatter";
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
 const TagSchema = z.looseObject({
   name: z.string().min(1),
   description: z.string().min(1),
@@ -43,10 +39,6 @@ export async function loadConfig(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Journal entry types
-// ---------------------------------------------------------------------------
-
 export type JournalTag = {
   name: string;
   description: string;
@@ -76,10 +68,6 @@ export type JournalEntry = {
   body: string;
   filePath: string;
 };
-
-// ---------------------------------------------------------------------------
-// File helpers
-// ---------------------------------------------------------------------------
 
 function entryFilename(date: Date): string {
   const pad = (n: number, len = 2) => String(n).padStart(len, "0");
@@ -139,10 +127,6 @@ async function loadEmbedding(entryPath: string): Promise<number[] | undefined> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// ID validation
-// ---------------------------------------------------------------------------
-
 const SAFE_ID = /^[a-zA-Z0-9_-]+$/;
 
 function validateId(id: string): string {
@@ -152,10 +136,6 @@ function validateId(id: string): string {
   }
   return trimmed;
 }
-
-// ---------------------------------------------------------------------------
-// Journal store
-// ---------------------------------------------------------------------------
 
 export type JournalStore = {
   write(entry: {
@@ -357,10 +337,6 @@ export function createJournalStore(configDir?: string): JournalStore {
     },
   };
 }
-
-// ---------------------------------------------------------------------------
-// System prompt note
-// ---------------------------------------------------------------------------
 
 export function buildJournalSystemNote(
   tags?: readonly JournalTag[],

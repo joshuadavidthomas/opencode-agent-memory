@@ -3,10 +3,6 @@ import { tool } from "@opencode-ai/plugin";
 import type { JournalStore } from "./journal";
 import type { MemoryScope, MemoryStore } from "./memory";
 
-// ---------------------------------------------------------------------------
-// Memory tools
-// ---------------------------------------------------------------------------
-
 export function MemoryList(store: MemoryStore) {
   return tool({
     description: "List available memory blocks (labels, descriptions, sizes).",
@@ -70,10 +66,6 @@ export function MemoryReplace(store: MemoryStore) {
     },
   });
 }
-
-// ---------------------------------------------------------------------------
-// Journal tools
-// ---------------------------------------------------------------------------
 
 export type JournalContext = {
   directory: string;
