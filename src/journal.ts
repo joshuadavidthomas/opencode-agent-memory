@@ -16,6 +16,7 @@ const ConfigSchema = z.looseObject({
   journal: z
     .looseObject({
       enabled: z.boolean().optional(),
+      categories: z.array(z.string().min(1)).optional(),
     })
     .optional(),
 });
@@ -41,7 +42,7 @@ export async function loadConfig(
 // Journal entry types
 // ---------------------------------------------------------------------------
 
-const CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
   "insight",
   "decision",
   "observation",
@@ -49,11 +50,9 @@ const CATEGORIES = [
   "note",
 ] as const;
 
-export type JournalCategory = (typeof CATEGORIES)[number];
-
 const EntryFrontmatterSchema = z.looseObject({
   title: z.string().min(1),
-  category: z.enum(CATEGORIES).optional(),
+  category: z.string().optional(),
   project: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
@@ -66,7 +65,7 @@ const EntryFrontmatterSchema = z.looseObject({
 export type JournalEntry = {
   id: string;
   title: string;
-  category: JournalCategory;
+  category: string;
   project: string;
   model: string;
   provider: string;
@@ -163,7 +162,7 @@ export type JournalStore = {
   write(entry: {
     title: string;
     body: string;
-    category?: JournalCategory;
+    category?: string;
     project?: string;
     model?: string;
     provider?: string;
@@ -176,7 +175,7 @@ export type JournalStore = {
 
   search(query: {
     text?: string;
-    category?: JournalCategory;
+    category?: string;
     project?: string;
     tags?: string[];
     limit?: number;
@@ -361,15 +360,19 @@ export function createJournalStore(configDir?: string): JournalStore {
 // System prompt note
 // ---------------------------------------------------------------------------
 
-export const JOURNAL_SYSTEM_NOTE = `<journal_instructions>
-You have access to a private journal. Use it to:
-- Record technical insights and discoveries (journal_write with category "insight")
-- Document design decisions and their rationale (category "decision")
-- Note patterns or observations worth remembering (category "observation")
-- Reflect on what worked or didn't (category "reflection")
-- Capture any other technical notes (category "note")
+export function buildJournalSystemNote(categories: readonly string[]): string {
+  const categoryList = categories
+    .map((c) => `- ${c}`)
+    .join("\n");
+
+  return `<journal_instructions>
+You have access to a private journal. Use it to record thoughts, discoveries, and decisions as you work.
+
+Available categories:
+${categoryList}
 
 Journal entries are append-only: you write new entries but never edit old ones.
 Use journal_search to find past entries semantically, and journal_read to read a specific entry.
 The journal is global across all projects but each entry records which project it was written from.
 </journal_instructions>`;
+}

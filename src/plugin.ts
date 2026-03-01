@@ -1,11 +1,22 @@
 import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
 
-import { createJournalStore, JOURNAL_SYSTEM_NOTE, loadConfig } from "./journal";
-import { JournalRead, JournalSearch, JournalWrite } from "./journal-tools";
-import type { JournalContext } from "./journal-tools";
+import {
+  buildJournalSystemNote,
+  createJournalStore,
+  DEFAULT_CATEGORIES,
+  loadConfig,
+} from "./journal";
 import { createMemoryStore } from "./memory";
 import { renderMemoryBlocks } from "./prompt";
-import { MemoryList, MemoryReplace, MemorySet } from "./tools";
+import {
+  JournalRead,
+  JournalSearch,
+  JournalWrite,
+  MemoryList,
+  MemoryReplace,
+  MemorySet,
+} from "./tools";
+import type { JournalContext } from "./tools";
 
 export const MemoryPlugin: Plugin = async ({ directory }) => {
   const store = createMemoryStore(directory);
@@ -14,6 +25,7 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
   // Journal: opt-in via ~/.config/opencode/agent-memory.json
   const config = await loadConfig();
   const journalEnabled = config.journal?.enabled === true;
+  const categories = config.journal?.categories ?? DEFAULT_CATEGORIES;
 
   // Mutable state updated by chat.message hook
   const journalCtx: JournalContext = {
@@ -23,14 +35,16 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
   };
 
   let journalTools: Record<string, ToolDefinition> = {};
+  let journalSystemNote = "";
 
   if (journalEnabled) {
     const journalStore = createJournalStore();
     journalTools = {
-      journal_write: JournalWrite(journalStore, journalCtx),
+      journal_write: JournalWrite(journalStore, journalCtx, categories),
       journal_read: JournalRead(journalStore),
-      journal_search: JournalSearch(journalStore),
+      journal_search: JournalSearch(journalStore, categories),
     };
+    journalSystemNote = buildJournalSystemNote(categories);
   }
 
   return {
@@ -52,8 +66,8 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
       output.system.splice(insertAt, 0, xml);
 
       // Append journal instructions at the end (preserves memory block cache)
-      if (journalEnabled) {
-        output.system.push(JOURNAL_SYSTEM_NOTE);
+      if (journalSystemNote) {
+        output.system.push(journalSystemNote);
       }
     },
 

@@ -62,6 +62,18 @@ describe("loadConfig", () => {
     expect(config).toEqual({});
   });
 
+  test("returns custom categories from config", async () => {
+    const dir = await mkTmpDir();
+    await fs.writeFile(
+      path.join(dir, "agent-memory.json"),
+      JSON.stringify({
+        journal: { enabled: true, categories: ["bug", "feature", "note"] },
+      }),
+    );
+    const config = await loadConfig(dir);
+    expect(config.journal?.categories).toEqual(["bug", "feature", "note"]);
+  });
+
   test("returns empty config when schema validation fails", async () => {
     const dir = await mkTmpDir();
     await fs.writeFile(
