@@ -74,6 +74,27 @@ describe("loadConfig", () => {
     expect(config.journal?.categories).toEqual(["bug", "feature", "note"]);
   });
 
+  test("returns custom tags from config", async () => {
+    const dir = await mkTmpDir();
+    await fs.writeFile(
+      path.join(dir, "agent-memory.json"),
+      JSON.stringify({
+        journal: {
+          enabled: true,
+          tags: [
+            { name: "perf", description: "Performance optimization work" },
+            { name: "debug", description: "Debugging sessions" },
+          ],
+        },
+      }),
+    );
+    const config = await loadConfig(dir);
+    expect(config.journal?.tags).toEqual([
+      { name: "perf", description: "Performance optimization work" },
+      { name: "debug", description: "Debugging sessions" },
+    ]);
+  });
+
   test("returns empty config when schema validation fails", async () => {
     const dir = await mkTmpDir();
     await fs.writeFile(
@@ -109,7 +130,7 @@ describe("journal store", () => {
       project: "/home/user/project",
       model: "claude-opus-4-6",
       provider: "anthropic",
-      tags: [{ name: "testing", description: "Test-related work" }],
+      tags: ["testing"],
     });
 
     expect(entry.title).toBe("Test insight");
@@ -117,7 +138,7 @@ describe("journal store", () => {
     expect(entry.project).toBe("/home/user/project");
     expect(entry.model).toBe("claude-opus-4-6");
     expect(entry.provider).toBe("anthropic");
-    expect(entry.tags).toEqual([{ name: "testing", description: "Test-related work" }]);
+    expect(entry.tags).toEqual(["testing"]);
     expect(entry.body).toBe("Discovered an interesting pattern.");
     expect(entry.id).toMatch(/^\d{8}-\d{6}-\d{3}$/);
 
@@ -175,20 +196,14 @@ describe("journal store", () => {
       title: "Read test",
       body: "Read me back.",
       category: "observation",
-      tags: [
-        { name: "test", description: "Testing" },
-        { name: "read", description: "Read operations" },
-      ],
+      tags: ["test", "read"],
     });
 
     const read = await store.read(written.id);
     expect(read.title).toBe("Read test");
     expect(read.body).toBe("Read me back.");
     expect(read.category).toBe("observation");
-    expect(read.tags).toEqual([
-      { name: "test", description: "Testing" },
-      { name: "read", description: "Read operations" },
-    ]);
+    expect(read.tags).toEqual(["test", "read"]);
   });
 
   test("read throws for nonexistent id", async () => {
@@ -249,16 +264,13 @@ describe("journal store", () => {
     await store.write({
       title: "Tagged",
       body: "...",
-      tags: [
-        { name: "rust", description: "Rust programming" },
-        { name: "perf", description: "Performance work" },
-      ],
+      tags: ["rust", "perf"],
     });
     await new Promise((r) => setTimeout(r, 5));
     await store.write({
       title: "Other",
       body: "...",
-      tags: [{ name: "python", description: "Python programming" }],
+      tags: ["python"],
     });
 
     const result = await store.search({ tags: ["rust"] });

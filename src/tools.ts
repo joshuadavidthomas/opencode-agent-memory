@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 
-import type { JournalStore, JournalTag } from "./journal";
+import type { JournalStore } from "./journal";
 import type { MemoryScope, MemoryStore } from "./memory";
 
 // ---------------------------------------------------------------------------
@@ -90,8 +90,7 @@ export function JournalWrite(
     description:
       "Write a new journal entry. Use this to capture insights, technical discoveries, " +
       "design decisions, observations, or reflections. Entries are append-only and cannot be edited. " +
-      'Tags should be a JSON array of objects with "name" and "description" fields, ' +
-      'e.g. [{"name": "perf", "description": "Performance optimization work"}].',
+      "Tags are optional comma-separated names, e.g. \"perf, debugging\".",
     args: {
       title: tool.schema.string(),
       body: tool.schema.string(),
@@ -101,25 +100,12 @@ export function JournalWrite(
       tags: tool.schema.string().optional(),
     },
     async execute(args, toolCtx) {
-      let tags: JournalTag[] | undefined;
-      if (args.tags) {
-        try {
-          const parsed = JSON.parse(args.tags);
-          if (Array.isArray(parsed)) {
-            tags = parsed
-              .filter(
-                (t: unknown): t is JournalTag =>
-                  typeof t === "object" &&
-                  t !== null &&
-                  typeof (t as JournalTag).name === "string" &&
-                  typeof (t as JournalTag).description === "string",
-              )
-              .map((t) => ({ name: t.name.trim(), description: t.description.trim() }));
-          }
-        } catch {
-          // Invalid JSON — ignore tags
-        }
-      }
+      const tags = args.tags
+        ? args.tags
+            .split(",")
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        : undefined;
 
       const entry = await store.write({
         title: args.title,
@@ -159,7 +145,7 @@ export function JournalRead(store: JournalStore) {
         entry.agent ? `agent: ${entry.agent}` : null,
         entry.sessionId ? `session: ${entry.sessionId}` : null,
         entry.tags.length > 0
-          ? `tags: ${entry.tags.map((t) => `${t.name} (${t.description})`).join(", ")}`
+          ? `tags: ${entry.tags.join(", ")}`
           : null,
       ]
         .filter(Boolean)
@@ -213,7 +199,7 @@ export function JournalSearch(
       const lines = result.entries.map((e) => {
         const tagStr =
           e.tags.length > 0
-            ? ` [${e.tags.map((t) => t.name).join(", ")}]`
+            ? ` [${e.tags.join(", ")}]`
             : "";
         return `${e.id}\n  ${e.category}: ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
       });

@@ -12,11 +12,17 @@ import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./f
 // Config
 // ---------------------------------------------------------------------------
 
+const TagSchema = z.looseObject({
+  name: z.string().min(1),
+  description: z.string().min(1),
+});
+
 const ConfigSchema = z.looseObject({
   journal: z
     .looseObject({
       enabled: z.boolean().optional(),
       categories: z.array(z.string().min(1)).optional(),
+      tags: z.array(TagSchema).optional(),
     })
     .optional(),
 });
@@ -55,11 +61,6 @@ export type JournalTag = {
   description: string;
 };
 
-const TagSchema = z.looseObject({
-  name: z.string().min(1),
-  description: z.string().min(1),
-});
-
 const EntryFrontmatterSchema = z.looseObject({
   title: z.string().min(1),
   category: z.string().optional(),
@@ -69,7 +70,7 @@ const EntryFrontmatterSchema = z.looseObject({
   agent: z.string().optional(),
   session_id: z.string().optional(),
   created: z.string().optional(),
-  tags: z.array(TagSchema).optional(),
+  tags: z.array(z.string().min(1)).optional(),
 });
 
 export type JournalEntry = {
@@ -82,7 +83,7 @@ export type JournalEntry = {
   agent: string;
   sessionId: string;
   created: Date;
-  tags: JournalTag[];
+  tags: string[];
   body: string;
   filePath: string;
 };
@@ -178,7 +179,7 @@ export type JournalStore = {
     provider?: string;
     agent?: string;
     sessionId?: string;
-    tags?: JournalTag[];
+    tags?: string[];
   }): Promise<JournalEntry>;
 
   read(id: string): Promise<JournalEntry>;
@@ -316,7 +317,7 @@ export function createJournalStore(configDir?: string): JournalStore {
           continue;
         }
         if (query.tags && query.tags.length > 0) {
-          const entryTagNames = entry.tags.map((t) => t.name.toLowerCase());
+          const entryTagNames = entry.tags.map((t) => t.toLowerCase());
           const allTagsMatch = query.tags.every((t) =>
             entryTagNames.includes(t.toLowerCase()),
           );
@@ -370,16 +371,24 @@ export function createJournalStore(configDir?: string): JournalStore {
 // System prompt note
 // ---------------------------------------------------------------------------
 
-export function buildJournalSystemNote(categories: readonly string[]): string {
+export function buildJournalSystemNote(
+  categories: readonly string[],
+  tags?: readonly JournalTag[],
+): string {
   const categoryList = categories
     .map((c) => `- ${c}`)
     .join("\n");
+
+  const tagSection =
+    tags && tags.length > 0
+      ? `\n\nSuggested tags:\n${tags.map((t) => `- ${t.name}: ${t.description}`).join("\n")}`
+      : "";
 
   return `<journal_instructions>
 You have access to a private journal. Use it to record thoughts, discoveries, and decisions as you work.
 
 Available categories:
-${categoryList}
+${categoryList}${tagSection}
 
 Journal entries are append-only: you write new entries but never edit old ones.
 Use journal_search to find past entries semantically, and journal_read to read a specific entry.

@@ -44,7 +44,7 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
       journal_read: JournalRead(journalStore),
       journal_search: JournalSearch(journalStore, categories),
     };
-    journalSystemNote = buildJournalSystemNote(categories);
+    journalSystemNote = buildJournalSystemNote(categories, config.journal?.tags);
   }
 
   return {
