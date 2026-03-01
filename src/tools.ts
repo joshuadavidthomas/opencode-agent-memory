@@ -1,6 +1,6 @@
 import { tool } from "@opencode-ai/plugin";
 
-import type { JournalStore } from "./journal";
+import type { JournalStore, JournalTag } from "./journal";
 import type { MemoryScope, MemoryStore } from "./memory";
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,9 @@ export function JournalWrite(
   return tool({
     description:
       "Write a new journal entry. Use this to capture insights, technical discoveries, " +
-      "design decisions, observations, or reflections. Entries are append-only and cannot be edited.",
+      "design decisions, observations, or reflections. Entries are append-only and cannot be edited. " +
+      'Tags should be a JSON array of objects with "name" and "description" fields, ' +
+      'e.g. [{"name": "perf", "description": "Performance optimization work"}].',
     args: {
       title: tool.schema.string(),
       body: tool.schema.string(),
@@ -99,12 +101,25 @@ export function JournalWrite(
       tags: tool.schema.string().optional(),
     },
     async execute(args, toolCtx) {
-      const tags = args.tags
-        ? args.tags
-            .split(",")
-            .map((t: string) => t.trim())
-            .filter(Boolean)
-        : undefined;
+      let tags: JournalTag[] | undefined;
+      if (args.tags) {
+        try {
+          const parsed = JSON.parse(args.tags);
+          if (Array.isArray(parsed)) {
+            tags = parsed
+              .filter(
+                (t: unknown): t is JournalTag =>
+                  typeof t === "object" &&
+                  t !== null &&
+                  typeof (t as JournalTag).name === "string" &&
+                  typeof (t as JournalTag).description === "string",
+              )
+              .map((t) => ({ name: t.name.trim(), description: t.description.trim() }));
+          }
+        } catch {
+          // Invalid JSON — ignore tags
+        }
+      }
 
       const entry = await store.write({
         title: args.title,
@@ -143,7 +158,9 @@ export function JournalRead(store: JournalStore) {
         entry.provider ? `provider: ${entry.provider}` : null,
         entry.agent ? `agent: ${entry.agent}` : null,
         entry.sessionId ? `session: ${entry.sessionId}` : null,
-        entry.tags.length > 0 ? `tags: ${entry.tags.join(", ")}` : null,
+        entry.tags.length > 0
+          ? `tags: ${entry.tags.map((t) => `${t.name} (${t.description})`).join(", ")}`
+          : null,
       ]
         .filter(Boolean)
         .join("\n");
@@ -194,7 +211,10 @@ export function JournalSearch(
       const header = `Found ${result.total} entries (showing ${result.entries.length}):`;
 
       const lines = result.entries.map((e) => {
-        const tagStr = e.tags.length > 0 ? ` [${e.tags.join(", ")}]` : "";
+        const tagStr =
+          e.tags.length > 0
+            ? ` [${e.tags.map((t) => t.name).join(", ")}]`
+            : "";
         return `${e.id}\n  ${e.category}: ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
       });
 

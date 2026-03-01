@@ -50,6 +50,16 @@ export const DEFAULT_CATEGORIES = [
   "note",
 ] as const;
 
+export type JournalTag = {
+  name: string;
+  description: string;
+};
+
+const TagSchema = z.looseObject({
+  name: z.string().min(1),
+  description: z.string().min(1),
+});
+
 const EntryFrontmatterSchema = z.looseObject({
   title: z.string().min(1),
   category: z.string().optional(),
@@ -59,7 +69,7 @@ const EntryFrontmatterSchema = z.looseObject({
   agent: z.string().optional(),
   session_id: z.string().optional(),
   created: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(TagSchema).optional(),
 });
 
 export type JournalEntry = {
@@ -72,7 +82,7 @@ export type JournalEntry = {
   agent: string;
   sessionId: string;
   created: Date;
-  tags: string[];
+  tags: JournalTag[];
   body: string;
   filePath: string;
 };
@@ -168,7 +178,7 @@ export type JournalStore = {
     provider?: string;
     agent?: string;
     sessionId?: string;
-    tags?: string[];
+    tags?: JournalTag[];
   }): Promise<JournalEntry>;
 
   read(id: string): Promise<JournalEntry>;
@@ -306,9 +316,9 @@ export function createJournalStore(configDir?: string): JournalStore {
           continue;
         }
         if (query.tags && query.tags.length > 0) {
-          const entryTagsLower = entry.tags.map((t) => t.toLowerCase());
+          const entryTagNames = entry.tags.map((t) => t.name.toLowerCase());
           const allTagsMatch = query.tags.every((t) =>
-            entryTagsLower.includes(t.toLowerCase()),
+            entryTagNames.includes(t.toLowerCase()),
           );
           if (!allTagsMatch) continue;
         }

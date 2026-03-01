@@ -109,7 +109,7 @@ describe("journal store", () => {
       project: "/home/user/project",
       model: "claude-opus-4-6",
       provider: "anthropic",
-      tags: ["testing"],
+      tags: [{ name: "testing", description: "Test-related work" }],
     });
 
     expect(entry.title).toBe("Test insight");
@@ -117,7 +117,7 @@ describe("journal store", () => {
     expect(entry.project).toBe("/home/user/project");
     expect(entry.model).toBe("claude-opus-4-6");
     expect(entry.provider).toBe("anthropic");
-    expect(entry.tags).toEqual(["testing"]);
+    expect(entry.tags).toEqual([{ name: "testing", description: "Test-related work" }]);
     expect(entry.body).toBe("Discovered an interesting pattern.");
     expect(entry.id).toMatch(/^\d{8}-\d{6}-\d{3}$/);
 
@@ -175,14 +175,20 @@ describe("journal store", () => {
       title: "Read test",
       body: "Read me back.",
       category: "observation",
-      tags: ["test", "read"],
+      tags: [
+        { name: "test", description: "Testing" },
+        { name: "read", description: "Read operations" },
+      ],
     });
 
     const read = await store.read(written.id);
     expect(read.title).toBe("Read test");
     expect(read.body).toBe("Read me back.");
     expect(read.category).toBe("observation");
-    expect(read.tags).toEqual(["test", "read"]);
+    expect(read.tags).toEqual([
+      { name: "test", description: "Testing" },
+      { name: "read", description: "Read operations" },
+    ]);
   });
 
   test("read throws for nonexistent id", async () => {
@@ -240,9 +246,20 @@ describe("journal store", () => {
     tmpDir = await mkTmpDir();
     const store = createJournalStore(tmpDir);
 
-    await store.write({ title: "Tagged", body: "...", tags: ["rust", "perf"] });
+    await store.write({
+      title: "Tagged",
+      body: "...",
+      tags: [
+        { name: "rust", description: "Rust programming" },
+        { name: "perf", description: "Performance work" },
+      ],
+    });
     await new Promise((r) => setTimeout(r, 5));
-    await store.write({ title: "Other", body: "...", tags: ["python"] });
+    await store.write({
+      title: "Other",
+      body: "...",
+      tags: [{ name: "python", description: "Python programming" }],
+    });
 
     const result = await store.search({ tags: ["rust"] });
     expect(result.total).toBe(1);
