@@ -191,10 +191,18 @@ export function JournalSearch(
       });
 
       if (result.entries.length === 0) {
-        return "No journal entries found.";
+        const tagsLine =
+          result.allTags.length > 0
+            ? `\nTags in use: ${result.allTags.join(", ")}`
+            : "";
+        return `No journal entries found.${tagsLine}`;
       }
 
       const header = `Found ${result.total} entries (showing ${result.entries.length}):`;
+      const tagsLine =
+        result.allTags.length > 0
+          ? `\nTags in use: ${result.allTags.join(", ")}`
+          : "";
 
       const lines = result.entries.map((e) => {
         const tagStr =
@@ -204,7 +212,7 @@ export function JournalSearch(
         return `${e.id}\n  ${e.category}: ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
       });
 
-      return `${header}\n\n${lines.join("\n\n")}`;
+      return `${header}${tagsLine}\n\n${lines.join("\n\n")}`;
     },
   });
 }

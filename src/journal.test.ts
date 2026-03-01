@@ -345,6 +345,43 @@ describe("journal store", () => {
     const result = await store.search({});
     expect(result.entries.length).toBe(0);
     expect(result.total).toBe(0);
+    expect(result.allTags).toEqual([]);
+  });
+
+  test("search returns allTags from all entries regardless of filters", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+
+    await store.write({
+      title: "Rust work",
+      body: "...",
+      category: "insight",
+      tags: ["rust", "perf"],
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    await store.write({
+      title: "Python work",
+      body: "...",
+      category: "note",
+      tags: ["python", "testing"],
+    });
+
+    // Filter to only insight category — allTags should still include all tags
+    const result = await store.search({ category: "insight" });
+    expect(result.total).toBe(1);
+    expect(result.allTags).toEqual(["perf", "python", "rust", "testing"]);
+  });
+
+  test("search allTags deduplicates across entries", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+
+    await store.write({ title: "A", body: "...", tags: ["rust", "perf"] });
+    await new Promise((r) => setTimeout(r, 5));
+    await store.write({ title: "B", body: "...", tags: ["rust", "debugging"] });
+
+    const result = await store.search({});
+    expect(result.allTags).toEqual(["debugging", "perf", "rust"]);
   });
 
   test("search by text uses semantic matching", async () => {

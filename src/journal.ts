@@ -190,7 +190,7 @@ export type JournalStore = {
     project?: string;
     tags?: string[];
     limit?: number;
-  }): Promise<{ entries: JournalEntry[]; total: number }>;
+  }): Promise<{ entries: JournalEntry[]; total: number; allTags: string[] }>;
 };
 
 export function createJournalStore(configDir?: string): JournalStore {
@@ -284,7 +284,7 @@ export function createJournalStore(configDir?: string): JournalStore {
           .sort()
           .reverse(); // Newest first
       } catch {
-        return { entries: [], total: 0 };
+        return { entries: [], total: 0, allTags: [] };
       }
 
       // If a text query is provided, try semantic search first
@@ -297,6 +297,9 @@ export function createJournalStore(configDir?: string): JournalStore {
         }
       }
 
+      // Collect all tags across every entry (before filtering)
+      const tagSet = new Set<string>();
+
       for (const file of files) {
         const filePath = path.join(journalDir, file);
         let entry: JournalEntry;
@@ -304,6 +307,11 @@ export function createJournalStore(configDir?: string): JournalStore {
           entry = await readEntryFile(filePath);
         } catch {
           continue;
+        }
+
+        // Collect tags before applying filters
+        for (const tag of entry.tags) {
+          tagSet.add(tag);
         }
 
         // Apply metadata filters (AND logic)
@@ -362,7 +370,11 @@ export function createJournalStore(configDir?: string): JournalStore {
       // Apply limit
       entries = entries.slice(0, limit);
 
-      return { entries: entries.map((e) => e.entry), total };
+      return {
+        entries: entries.map((e) => e.entry),
+        total,
+        allTags: Array.from(tagSet).sort(),
+      };
     },
   };
 }
