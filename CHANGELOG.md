@@ -20,9 +20,7 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ### Added
 
-- Optional journal feature with semantic search for capturing insights and decisions across sessions
-- Journal tools: `journal_write`, `journal_search`, `journal_read`
-- Configurable tags for classifying journal entries
+- Optional journal feature with semantic search, tagging, and tools for capturing insights and decisions across sessions
 
 ## [0.1.0]
 
