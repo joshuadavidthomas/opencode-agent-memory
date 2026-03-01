@@ -62,18 +62,6 @@ describe("loadConfig", () => {
     expect(config).toEqual({});
   });
 
-  test("returns custom categories from config", async () => {
-    const dir = await mkTmpDir();
-    await fs.writeFile(
-      path.join(dir, "agent-memory.json"),
-      JSON.stringify({
-        journal: { enabled: true, categories: ["bug", "feature", "note"] },
-      }),
-    );
-    const config = await loadConfig(dir);
-    expect(config.journal?.categories).toEqual(["bug", "feature", "note"]);
-  });
-
   test("returns custom tags from config", async () => {
     const dir = await mkTmpDir();
     await fs.writeFile(
@@ -126,7 +114,6 @@ describe("journal store", () => {
     const entry = await store.write({
       title: "Test insight",
       body: "Discovered an interesting pattern.",
-      category: "insight",
       project: "/home/user/project",
       model: "claude-opus-4-6",
       provider: "anthropic",
@@ -134,7 +121,6 @@ describe("journal store", () => {
     });
 
     expect(entry.title).toBe("Test insight");
-    expect(entry.category).toBe("insight");
     expect(entry.project).toBe("/home/user/project");
     expect(entry.model).toBe("claude-opus-4-6");
     expect(entry.provider).toBe("anthropic");
@@ -145,19 +131,6 @@ describe("journal store", () => {
     // Verify file exists
     const raw = await fs.readFile(entry.filePath, "utf-8");
     expect(raw).toContain("title: Test insight");
-    expect(raw).toContain("category: insight");
-  });
-
-  test("write defaults category to note", async () => {
-    tmpDir = await mkTmpDir();
-    const store = createJournalStore(tmpDir);
-
-    const entry = await store.write({
-      title: "A simple note",
-      body: "Just a note.",
-    });
-
-    expect(entry.category).toBe("note");
   });
 
   test("write generates chronological filenames", async () => {
@@ -195,14 +168,12 @@ describe("journal store", () => {
     const written = await store.write({
       title: "Read test",
       body: "Read me back.",
-      category: "observation",
       tags: ["test", "read"],
     });
 
     const read = await store.read(written.id);
     expect(read.title).toBe("Read test");
     expect(read.body).toBe("Read me back.");
-    expect(read.category).toBe("observation");
     expect(read.tags).toEqual(["test", "read"]);
   });
 
@@ -240,21 +211,6 @@ describe("journal store", () => {
     // Newest first (by recency score)
     expect(result.entries[0]!.title).toBe("Entry 3");
     expect(result.entries[2]!.title).toBe("Entry 1");
-  });
-
-  test("search filters by category", async () => {
-    tmpDir = await mkTmpDir();
-    const store = createJournalStore(tmpDir);
-
-    await store.write({ title: "An insight", body: "...", category: "insight" });
-    await new Promise((r) => setTimeout(r, 5));
-    await store.write({ title: "A decision", body: "...", category: "decision" });
-    await new Promise((r) => setTimeout(r, 5));
-    await store.write({ title: "Another insight", body: "...", category: "insight" });
-
-    const result = await store.search({ category: "insight" });
-    expect(result.total).toBe(2);
-    expect(result.entries.every((e) => e.category === "insight")).toBe(true);
   });
 
   test("search filters by tags", async () => {
@@ -298,26 +254,26 @@ describe("journal store", () => {
     await store.write({
       title: "Match",
       body: "...",
-      category: "insight",
+      tags: ["rust"],
       project: "/proj/a",
     });
     await new Promise((r) => setTimeout(r, 5));
     await store.write({
-      title: "Wrong category",
+      title: "Wrong tags",
       body: "...",
-      category: "decision",
+      tags: ["python"],
       project: "/proj/a",
     });
     await new Promise((r) => setTimeout(r, 5));
     await store.write({
       title: "Wrong project",
       body: "...",
-      category: "insight",
+      tags: ["rust"],
       project: "/proj/b",
     });
 
     const result = await store.search({
-      category: "insight",
+      tags: ["rust"],
       project: "/proj/a",
     });
     expect(result.total).toBe(1);
@@ -338,6 +294,38 @@ describe("journal store", () => {
     expect(result.total).toBe(5);
   });
 
+  test("search supports offset pagination", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+
+    for (let i = 0; i < 5; i++) {
+      await store.write({ title: `Entry ${i}`, body: `Body ${i}` });
+      await new Promise((r) => setTimeout(r, 5));
+    }
+
+    const page1 = await store.search({ limit: 2, offset: 0 });
+    expect(page1.entries.length).toBe(2);
+    expect(page1.total).toBe(5);
+    // Newest first
+    expect(page1.entries[0]!.title).toBe("Entry 4");
+    expect(page1.entries[1]!.title).toBe("Entry 3");
+
+    const page2 = await store.search({ limit: 2, offset: 2 });
+    expect(page2.entries.length).toBe(2);
+    expect(page2.total).toBe(5);
+    expect(page2.entries[0]!.title).toBe("Entry 2");
+    expect(page2.entries[1]!.title).toBe("Entry 1");
+
+    const page3 = await store.search({ limit: 2, offset: 4 });
+    expect(page3.entries.length).toBe(1);
+    expect(page3.entries[0]!.title).toBe("Entry 0");
+
+    // Past the end
+    const page4 = await store.search({ limit: 2, offset: 10 });
+    expect(page4.entries.length).toBe(0);
+    expect(page4.total).toBe(5);
+  });
+
   test("search handles empty journal directory", async () => {
     tmpDir = await mkTmpDir();
     const store = createJournalStore(tmpDir);
@@ -355,19 +343,17 @@ describe("journal store", () => {
     await store.write({
       title: "Rust work",
       body: "...",
-      category: "insight",
       tags: ["rust", "perf"],
     });
     await new Promise((r) => setTimeout(r, 5));
     await store.write({
       title: "Python work",
       body: "...",
-      category: "note",
       tags: ["python", "testing"],
     });
 
-    // Filter to only insight category — allTags should still include all tags
-    const result = await store.search({ category: "insight" });
+    // Filter to only rust tag — allTags should still include all tags
+    const result = await store.search({ tags: ["rust"] });
     expect(result.total).toBe(1);
     expect(result.allTags).toEqual(["perf", "python", "rust", "testing"]);
   });

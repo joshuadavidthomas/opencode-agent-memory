@@ -21,7 +21,6 @@ const ConfigSchema = z.looseObject({
   journal: z
     .looseObject({
       enabled: z.boolean().optional(),
-      categories: z.array(z.string().min(1)).optional(),
       tags: z.array(TagSchema).optional(),
     })
     .optional(),
@@ -48,14 +47,6 @@ export async function loadConfig(
 // Journal entry types
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_CATEGORIES = [
-  "insight",
-  "decision",
-  "observation",
-  "reflection",
-  "note",
-] as const;
-
 export type JournalTag = {
   name: string;
   description: string;
@@ -63,7 +54,6 @@ export type JournalTag = {
 
 const EntryFrontmatterSchema = z.looseObject({
   title: z.string().min(1),
-  category: z.string().optional(),
   project: z.string().optional(),
   model: z.string().optional(),
   provider: z.string().optional(),
@@ -76,7 +66,6 @@ const EntryFrontmatterSchema = z.looseObject({
 export type JournalEntry = {
   id: string;
   title: string;
-  category: string;
   project: string;
   model: string;
   provider: string;
@@ -128,7 +117,6 @@ async function readEntryFile(filePath: string): Promise<JournalEntry> {
   return {
     id,
     title: fm.title,
-    category: fm.category ?? "note",
     project: fm.project ?? "",
     model: fm.model ?? "",
     provider: fm.provider ?? "",
@@ -173,7 +161,6 @@ export type JournalStore = {
   write(entry: {
     title: string;
     body: string;
-    category?: string;
     project?: string;
     model?: string;
     provider?: string;
@@ -186,10 +173,10 @@ export type JournalStore = {
 
   search(query: {
     text?: string;
-    category?: string;
     project?: string;
     tags?: string[];
     limit?: number;
+    offset?: number;
   }): Promise<{ entries: JournalEntry[]; total: number; allTags: string[] }>;
 };
 
@@ -204,13 +191,11 @@ export function createJournalStore(configDir?: string): JournalStore {
       await fs.mkdir(journalDir, { recursive: true });
 
       const created = new Date();
-      const category = entry.category ?? "note";
       const filename = entryFilename(created);
       const filePath = path.join(journalDir, filename);
 
       const frontmatter: Record<string, unknown> = {
         title: entry.title,
-        category,
         created: created.toISOString(),
       };
 
@@ -241,7 +226,6 @@ export function createJournalStore(configDir?: string): JournalStore {
       return {
         id: path.basename(filePath, ".md"),
         title: entry.title,
-        category,
         project: entry.project ?? "",
         model: entry.model ?? "",
         provider: entry.provider ?? "",
@@ -269,6 +253,7 @@ export function createJournalStore(configDir?: string): JournalStore {
 
     async search(query) {
       const limit = Math.min(Math.max(query.limit ?? 20, 1), 50);
+      const offset = Math.max(query.offset ?? 0, 0);
 
       let entries: { entry: JournalEntry; score: number }[] = [];
 
@@ -315,12 +300,6 @@ export function createJournalStore(configDir?: string): JournalStore {
         }
 
         // Apply metadata filters (AND logic)
-        if (
-          query.category &&
-          entry.category.toLowerCase() !== query.category.toLowerCase()
-        ) {
-          continue;
-        }
         if (query.project && entry.project !== query.project) {
           continue;
         }
@@ -367,8 +346,8 @@ export function createJournalStore(configDir?: string): JournalStore {
       // Sort by score descending
       entries.sort((a, b) => b.score - a.score);
 
-      // Apply limit
-      entries = entries.slice(0, limit);
+      // Apply offset + limit
+      entries = entries.slice(offset, offset + limit);
 
       return {
         entries: entries.map((e) => e.entry),
@@ -384,13 +363,8 @@ export function createJournalStore(configDir?: string): JournalStore {
 // ---------------------------------------------------------------------------
 
 export function buildJournalSystemNote(
-  categories: readonly string[],
   tags?: readonly JournalTag[],
 ): string {
-  const categoryList = categories
-    .map((c) => `- ${c}`)
-    .join("\n");
-
   const tagSection =
     tags && tags.length > 0
       ? `\n\nSuggested tags:\n${tags.map((t) => `- ${t.name}: ${t.description}`).join("\n")}`
@@ -398,9 +372,7 @@ export function buildJournalSystemNote(
 
   return `<journal_instructions>
 You have access to a private journal. Use it to record thoughts, discoveries, and decisions as you work.
-
-Available categories:
-${categoryList}${tagSection}
+Tags are free-form strings — use them to classify entries however makes sense.${tagSection}
 
 Journal entries are append-only: you write new entries but never edit old ones.
 Use journal_search to find past entries semantically, and journal_read to read a specific entry.

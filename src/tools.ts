@@ -84,7 +84,6 @@ export type JournalContext = {
 export function JournalWrite(
   store: JournalStore,
   ctx: JournalContext,
-  categories: readonly string[],
 ) {
   return tool({
     description:
@@ -94,9 +93,6 @@ export function JournalWrite(
     args: {
       title: tool.schema.string(),
       body: tool.schema.string(),
-      category: tool.schema
-        .enum(categories as [string, ...string[]])
-        .optional(),
       tags: tool.schema.string().optional(),
     },
     async execute(args, toolCtx) {
@@ -110,7 +106,6 @@ export function JournalWrite(
       const entry = await store.write({
         title: args.title,
         body: args.body,
-        category: args.category,
         project: ctx.directory,
         model: ctx.model,
         provider: ctx.provider,
@@ -119,7 +114,7 @@ export function JournalWrite(
         tags,
       });
 
-      return `Journal entry created: ${entry.id}\n  title: ${entry.title}\n  category: ${entry.category}\n  created: ${entry.created.toISOString()}`;
+      return `Journal entry created: ${entry.id}\n  title: ${entry.title}\n  created: ${entry.created.toISOString()}`;
     },
   });
 }
@@ -137,7 +132,6 @@ export function JournalRead(store: JournalStore) {
 
       const meta = [
         `title: ${entry.title}`,
-        `category: ${entry.category}`,
         `created: ${entry.created.toISOString()}`,
         entry.project ? `project: ${entry.project}` : null,
         entry.model ? `model: ${entry.model}` : null,
@@ -156,23 +150,18 @@ export function JournalRead(store: JournalStore) {
   });
 }
 
-export function JournalSearch(
-  store: JournalStore,
-  categories: readonly string[],
-) {
+export function JournalSearch(store: JournalStore) {
   return tool({
     description:
       "Search journal entries using semantic similarity. Returns matching entries " +
       "sorted by relevance. All filters are optional and combined with AND logic. " +
-      "Use with no arguments to list recent entries.",
+      "Use with no arguments to list recent entries. Use offset to paginate.",
     args: {
       text: tool.schema.string().optional(),
-      category: tool.schema
-        .enum(categories as [string, ...string[]])
-        .optional(),
       project: tool.schema.string().optional(),
       tags: tool.schema.string().optional(),
       limit: tool.schema.number().int().positive().optional(),
+      offset: tool.schema.number().int().nonnegative().optional(),
     },
     async execute(args) {
       const tags = args.tags
@@ -184,10 +173,10 @@ export function JournalSearch(
 
       const result = await store.search({
         text: args.text,
-        category: args.category,
         project: args.project,
         tags,
         limit: args.limit,
+        offset: args.offset,
       });
 
       if (result.entries.length === 0) {
@@ -198,7 +187,8 @@ export function JournalSearch(
         return `No journal entries found.${tagsLine}`;
       }
 
-      const header = `Found ${result.total} entries (showing ${result.entries.length}):`;
+      const offset = args.offset ?? 0;
+      const header = `Found ${result.total} entries (showing ${offset + 1}–${offset + result.entries.length}):`;
       const tagsLine =
         result.allTags.length > 0
           ? `\nTags in use: ${result.allTags.join(", ")}`
@@ -209,7 +199,7 @@ export function JournalSearch(
           e.tags.length > 0
             ? ` [${e.tags.join(", ")}]`
             : "";
-        return `${e.id}\n  ${e.category}: ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
+        return `${e.id}\n  ${e.title}${tagStr}\n  ${e.created.toISOString()}`;
       });
 
       return `${header}${tagsLine}\n\n${lines.join("\n\n")}`;

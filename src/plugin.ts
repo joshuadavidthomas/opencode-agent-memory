@@ -3,7 +3,6 @@ import type { Plugin, ToolDefinition } from "@opencode-ai/plugin";
 import {
   buildJournalSystemNote,
   createJournalStore,
-  DEFAULT_CATEGORIES,
   loadConfig,
 } from "./journal";
 import { createMemoryStore } from "./memory";
@@ -25,7 +24,6 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
   // Journal: opt-in via ~/.config/opencode/agent-memory.json
   const config = await loadConfig();
   const journalEnabled = config.journal?.enabled === true;
-  const categories = config.journal?.categories ?? DEFAULT_CATEGORIES;
 
   // Mutable state updated by chat.message hook
   const journalCtx: JournalContext = {
@@ -40,11 +38,11 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
   if (journalEnabled) {
     const journalStore = createJournalStore();
     journalTools = {
-      journal_write: JournalWrite(journalStore, journalCtx, categories),
+      journal_write: JournalWrite(journalStore, journalCtx),
       journal_read: JournalRead(journalStore),
-      journal_search: JournalSearch(journalStore, categories),
+      journal_search: JournalSearch(journalStore),
     };
-    journalSystemNote = buildJournalSystemNote(categories, config.journal?.tags);
+    journalSystemNote = buildJournalSystemNote(config.journal?.tags);
   }
 
   return {
