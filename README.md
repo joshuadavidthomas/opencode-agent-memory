@@ -44,6 +44,14 @@ Optionally, pin to a specific version for stability:
 
 OpenCode fetches unpinned plugins from npm on each startup; pinned versions are cached and require a manual version bump to update.
 
+### SKILL.md
+
+```
+cp -r ./skills/* ~/.config/opencode/skills/
+```
+
+In OpenCode cli, type `/skills` and select `journal_write` and `journal_search` to quickly get started with journaling ability
+
 ### Local Development
 
 If you want to customize or contribute:
