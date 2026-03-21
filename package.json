@@ -1,12 +1,15 @@
 {
-  "name": "opencode-agent-memory",
-  "version": "0.2.0",
+  "name": "@Edison-A-N/opencode-agent-memory",
+  "version": "0.2.1",
   "description": "Letta-style editable memory blocks for OpenCode.",
   "author": "Josh Thomas <josh@joshthomas.dev>",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/joshuadavidthomas/opencode-agent-memory"
+    "url": "https://github.com/Edison-A-N/opencode-agent-memory"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "main": "src/plugin.ts",
   "type": "module",

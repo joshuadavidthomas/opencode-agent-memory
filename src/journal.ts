@@ -20,6 +20,11 @@ const ConfigSchema = z.looseObject({
       tags: z.array(TagSchema).optional(),
     })
     .optional(),
+  memory: z
+    .looseObject({
+      disable_global: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export type AgentMemoryConfig = z.infer<typeof ConfigSchema>;
