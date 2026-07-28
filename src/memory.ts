@@ -173,12 +173,33 @@ function stableSortBlocks(blocks: MemoryBlock[]): MemoryBlock[] {
   return blocks;
 }
 
-export function createMemoryStore(projectDirectory: string): MemoryStore {
+export type MemoryStoreOptions = {
+  disableGlobal?: boolean;
+};
+
+export function createMemoryStore(
+  projectDirectory: string,
+  storeOpts?: MemoryStoreOptions,
+): MemoryStore {
+  const disableGlobal = storeOpts?.disableGlobal === true;
+
+  function assertGlobalAllowed(scope: MemoryScope): void {
+    if (disableGlobal && scope === "global") {
+      throw new Error(
+        "Global memory scope is disabled. Only project-scoped memory blocks are available.",
+      );
+    }
+  }
+
   return {
     async ensureSeed() {
       await ensureGitignore(projectDirectory);
 
       for (const seed of SEED_BLOCKS) {
+        if (disableGlobal && seed.scope === "global") {
+          continue;
+        }
+
         const dir = scopeDir(projectDirectory, seed.scope);
         await fs.mkdir(dir, { recursive: true });
 
@@ -198,7 +219,15 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
     },
 
     async listBlocks(scope) {
-      const scopes: MemoryScope[] = scope === "all" ? ["global", "project"] : [scope];
+      let scopes: MemoryScope[];
+      if (scope === "all") {
+        scopes = disableGlobal ? ["project"] : ["global", "project"];
+      } else {
+        if (disableGlobal && scope === "global") {
+          return [];
+        }
+        scopes = [scope];
+      }
       const blocks: MemoryBlock[] = [];
 
       for (const s of scopes) {
@@ -225,6 +254,7 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
     },
 
     async getBlock(scope, label) {
+      assertGlobalAllowed(scope);
       const safeLabel = validateLabel(label);
       const dir = scopeDir(projectDirectory, scope);
       const filePath = path.join(dir, `${safeLabel}.md`);
@@ -237,6 +267,7 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
     },
 
     async setBlock(scope, label, value, opts) {
+      assertGlobalAllowed(scope);
       const safeLabel = validateLabel(label);
       const dir = scopeDir(projectDirectory, scope);
       await fs.mkdir(dir, { recursive: true });
@@ -267,6 +298,7 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
     },
 
     async replaceInBlock(scope, label, oldText, newText) {
+      assertGlobalAllowed(scope);
       const block = await this.getBlock(scope, label);
       if (block.readOnly) {
         throw new Error(`Memory block is read-only: ${scope}:${block.label}`);
