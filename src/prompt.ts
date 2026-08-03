@@ -5,16 +5,8 @@ const LINE_NUMBER_WARNING =
   "# NOTE: Line numbers shown below (with arrows like '1→') are to help during editing. Do NOT include line number prefixes in your memory edit tool calls.";
 
 function renderMemoryMetadata(blocks: MemoryBlock[]): string {
-  const now = new Date();
-
-  const lastModified = blocks.reduce(
-    (latest, block) => (block.lastModified > latest ? block.lastModified : latest),
-    new Date(0)
-  );
-
   return `<memory_metadata>
-- The current system date is: ${now.toISOString()}
-- Memory blocks were last modified: ${lastModified.toISOString()}
+- Memory blocks are editable via memory_set / memory_replace.
 - Use memory tools to manage your memory blocks
 </memory_metadata>`;
 }
