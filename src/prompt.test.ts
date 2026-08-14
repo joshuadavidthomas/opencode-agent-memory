@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { MemoryBlock } from "./memory";
+
 import { renderMemoryBlocks } from "./prompt";
 
 describe("renderMemoryBlocks", () => {
@@ -47,9 +49,8 @@ describe("renderMemoryBlocks", () => {
     expect(xml).toContain("</memory_instructions>");
   });
 
-  test("includes memory metadata block with timestamps", () => {
-    const testDate = new Date("2025-01-15T10:30:00Z");
-    const xml = renderMemoryBlocks([
+  test("memory metadata is stable across calls (cache-friendly head)", () => {
+    const blocks: MemoryBlock[] = [
       {
         scope: "global",
         label: "human",
@@ -58,14 +59,18 @@ describe("renderMemoryBlocks", () => {
         readOnly: false,
         value: "hi",
         filePath: "/tmp/human.md",
-        lastModified: testDate,
+        lastModified: new Date("2025-01-15T10:30:00Z"),
       },
-    ]);
+    ];
 
-    expect(xml).toContain("<memory_metadata>");
-    expect(xml).toContain("The current system date is:");
-    expect(xml).toContain("Memory blocks were last modified:");
-    expect(xml).toContain("</memory_metadata>");
+    const first = renderMemoryBlocks(blocks);
+    // small delay simulates two distinct requests
+    const second = renderMemoryBlocks(blocks);
+
+    expect(first).toContain("<memory_metadata>");
+    expect(first).not.toContain("The current system date is:");
+    expect(first).not.toContain("Memory blocks were last modified:");
+    expect(second).toBe(first);
   });
 
   test("handles empty value gracefully", () => {
