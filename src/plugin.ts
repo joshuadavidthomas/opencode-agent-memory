@@ -18,11 +18,13 @@ import {
 import type { JournalContext } from "./tools";
 
 export const MemoryPlugin: Plugin = async ({ directory }) => {
-  const store = createMemoryStore(directory);
+  const config = await loadConfig();
+  const disableGlobal = config.memory?.disable_global === true;
+
+  const store = createMemoryStore(directory, { disableGlobal });
   await store.ensureSeed();
 
   // Journal: opt-in via ~/.config/opencode/agent-memory.json
-  const config = await loadConfig();
   const journalEnabled = config.journal?.enabled === true;
 
   // Mutable state updated by chat.message hook
@@ -70,9 +72,9 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
     },
 
     tool: {
-      memory_list: MemoryList(store),
-      memory_set: MemorySet(store),
-      memory_replace: MemoryReplace(store),
+      memory_list: MemoryList(store, { disableGlobal }),
+      memory_set: MemorySet(store, { disableGlobal }),
+      memory_replace: MemoryReplace(store, { disableGlobal }),
       ...journalTools,
     },
   };
