@@ -58,15 +58,17 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
       const xml = renderMemoryBlocks(blocks);
       if (!xml) return;
 
-      // Insert early (right after provider header) for salience.
-      // OpenCode will re-join system chunks to preserve caching.
-      const insertAt = output.system.length > 0 ? 1 : 0;
-      output.system.splice(insertAt, 0, xml);
+      // Merge all system messages into one to satisfy llama.cpp's Jinja template
+      // which requires exactly one system message at the beginning.
+      const systemContents = output.system.length > 0
+        ? output.system.map(s => typeof s === "string" ? s : s.content || "")
+        : [];
 
-      // Append journal instructions at the end (preserves memory block cache)
-      if (journalSystemNote) {
-        output.system.push(journalSystemNote);
-      }
+      const mergedContent = [xml, ...systemContents, journalSystemNote]
+        .filter(Boolean)
+        .join("\n\n");
+
+      output.system = [mergedContent];
     },
 
     tool: {
