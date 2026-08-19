@@ -1,4 +1,18 @@
-# opencode-agent-memory
+# opencode-agent-memory-cache-friendly
+
+> [!NOTE]
+> **Why this fork exists:** upstream injects memory blocks into the system
+> prompt, which busts the provider prompt cache — see issues
+> [#8](https://github.com/joshuadavidthomas/opencode-agent-memory/issues/8)
+> and [#24](https://github.com/joshuadavidthomas/opencode-agent-memory/issues/24).
+> Measured on a real session, upstream's injection caps cache hit at ~10%.
+> This fork (branch [`cache-stable-snapshot`](../../tree/cache-stable-snapshot))
+> freezes a memory snapshot as the first message of the conversation instead,
+> achieving **90–98% cache hit on multi-million-token sessions** (validated
+> against a DeepSeek usage panel: 10.9M tokens, $0.13 total). See
+> [PR #26](https://github.com/joshuadavidthomas/opencode-agent-memory/pull/26)
+> for the full design and numbers. This fork will be retired once the fix
+> lands upstream.
 
 [Letta](https://letta.com)-style editable [memory blocks](https://docs.letta.com/guides/agents/memory-blocks/) for [OpenCode](https://opencode.ai).
 
@@ -15,7 +29,7 @@ For background on the memory concept, see Letta's docs on [memory](https://docs.
 - **Persistent memory** - Information survives across sessions and context compaction
 - **Shared across sessions** - Global blocks shared across all projects, project blocks shared across sessions in that codebase
 - **Self-editing** - The agent can read and modify its own memory with dedicated tools
-- **System prompt injection** - Memory blocks appear in the system prompt, always in-context
+- **Cache-stable snapshot injection** - Memory blocks are frozen per session and injected as the first message of the conversation, so the system prompt and history stay a byte-stable cache prefix (90-98% provider cache hit). Snapshots persist across restarts at `~/.local/share/opencode/agent-memory/snapshots/`
 - **Journal** - Append-only entries with semantic search for capturing insights, decisions, and discoveries across sessions
 
 ## Requirements

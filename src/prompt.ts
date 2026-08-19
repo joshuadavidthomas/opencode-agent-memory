@@ -5,6 +5,9 @@ const LINE_NUMBER_WARNING =
   "# NOTE: Line numbers shown below (with arrows like '1→') are to help during editing. Do NOT include line number prefixes in your memory edit tool calls.";
 
 function renderMemoryMetadata(blocks: MemoryBlock[]): string {
+  // Cache-friendly: date-only granularity. A ms-precision timestamp here
+  // invalidated the provider KV/prompt cache prefix on EVERY request.
+  const day = (d: Date) => d.toISOString().slice(0, 10);
   const now = new Date();
 
   const lastModified = blocks.reduce(
@@ -13,8 +16,8 @@ function renderMemoryMetadata(blocks: MemoryBlock[]): string {
   );
 
   return `<memory_metadata>
-- The current system date is: ${now.toISOString()}
-- Memory blocks were last modified: ${lastModified.toISOString()}
+- The current system date is: ${day(now)}
+- Memory blocks were last modified: ${day(lastModified)}
 - Use memory tools to manage your memory blocks
 </memory_metadata>`;
 }
