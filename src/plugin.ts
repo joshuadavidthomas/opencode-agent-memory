@@ -58,12 +58,11 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
       const xml = renderMemoryBlocks(blocks);
       if (!xml) return;
 
-      // Insert early (right after provider header) for salience.
-      // OpenCode will re-join system chunks to preserve caching.
-      const insertAt = output.system.length > 0 ? 1 : 0;
-      output.system.splice(insertAt, 0, xml);
+      // Cache-friendly: append at the END of the system prompt. Inserting at
+      // position 1 placed volatile content before ~99% of the context, which
+      // busted the provider prompt-cache prefix whenever memory changed.
+      output.system.push(xml);
 
-      // Append journal instructions at the end (preserves memory block cache)
       if (journalSystemNote) {
         output.system.push(journalSystemNote);
       }
