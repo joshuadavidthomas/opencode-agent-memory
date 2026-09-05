@@ -127,6 +127,15 @@ async function loadEmbedding(entryPath: string): Promise<number[] | undefined> {
   }
 }
 
+type CachedEntry = {
+  entryMtimeMs: number;
+  entrySize: number;
+  embMtimeMs: number;
+  embSize: number;
+  entry: JournalEntry;
+  embedding: number[] | undefined;
+};
+
 const SAFE_ID = /^[a-zA-Z0-9_-]+$/;
 
 function validateId(id: string): string {
@@ -165,6 +174,7 @@ export function createJournalStore(configDir?: string): JournalStore {
     configDir ?? path.join(os.homedir(), ".config", "opencode"),
     "journal",
   );
+  const entryCache = new Map<string, CachedEntry>();
 
   return {
     async write(entry) {
@@ -265,14 +275,47 @@ export function createJournalStore(configDir?: string): JournalStore {
       // Collect all tags across every entry (before filtering)
       const tagSet = new Set<string>();
 
-      for (const file of files) {
+      const alive = new Set(files);
+      for (const key of entryCache.keys()) {
+        if (!alive.has(key)) entryCache.delete(key);
+      }
+
+      const loadedEntries = await Promise.all(files.map(async (file) => {
         const filePath = path.join(journalDir, file);
-        let entry: JournalEntry;
+        const sidecarPath = embeddingPath(filePath);
         try {
-          entry = await readEntryFile(filePath);
+          const [entryStat, embStat] = await Promise.all([
+            fs.stat(filePath),
+            fs.stat(sidecarPath).catch(() => ({ mtimeMs: -1, size: -1 })),
+          ]);
+          const cached = entryCache.get(file);
+          if (cached && cached.entryMtimeMs === entryStat.mtimeMs &&
+              cached.entrySize === entryStat.size && cached.embMtimeMs === embStat.mtimeMs &&
+              cached.embSize === embStat.size) {
+            return cached;
+          }
+          const [entry, embedding] = await Promise.all([
+            readEntryFile(filePath),
+            loadEmbedding(filePath),
+          ]);
+          const value = {
+            entryMtimeMs: entryStat.mtimeMs,
+            entrySize: entryStat.size,
+            embMtimeMs: embStat.mtimeMs,
+            embSize: embStat.size,
+            entry,
+            embedding,
+          };
+          entryCache.set(file, value);
+          return value;
         } catch {
-          continue;
+          return undefined;
         }
+      }));
+
+      for (const loaded of loadedEntries) {
+        if (!loaded) continue;
+        const { entry, embedding: entryEmbedding } = loaded;
 
         // Collect tags before applying filters
         for (const tag of entry.tags) {
@@ -297,7 +340,6 @@ export function createJournalStore(configDir?: string): JournalStore {
         if (query.text) {
           if (queryEmbedding) {
             // Semantic search
-            const entryEmbedding = await loadEmbedding(filePath);
             if (entryEmbedding) {
               score = cosineSimilarity(queryEmbedding, entryEmbedding);
             } else {

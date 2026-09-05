@@ -7,6 +7,7 @@ import {
 } from "./journal";
 import { createMemoryStore } from "./memory";
 import { renderMemoryBlocks } from "./prompt";
+import { generateEmbedding } from "./embeddings";
 import {
   JournalRead,
   JournalSearch,
@@ -36,6 +37,7 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
   let journalSystemNote = "";
 
   if (journalEnabled) {
+    void generateEmbedding("warmup").catch(() => {});
     const journalStore = createJournalStore();
     journalTools = {
       journal_write: JournalWrite(journalStore, journalCtx),

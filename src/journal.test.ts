@@ -381,4 +381,35 @@ describe("journal store", () => {
     // Should find at least the matching entry
     expect(result.total).toBeGreaterThan(0);
   });
+
+  test("search cache keeps the entry usable after the sidecar disappears", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+    const entry = await store.write({
+      title: "Cached entry",
+      body: "Cache behavior test",
+    });
+
+    await store.search({});
+    await fs.rm(entry.filePath.replace(/\.md$/, ".embedding"));
+
+    const result = await store.search({ text: "Cached entry" });
+    expect(result.entries[0]?.title).toBe("Cached entry");
+  });
+
+  test("journal search cache is isolated between stores", async () => {
+    const firstDir = await mkTmpDir();
+    const secondDir = await mkTmpDir();
+    tmpDir = firstDir;
+    const first = createJournalStore(firstDir);
+    const second = createJournalStore(secondDir);
+    await first.write({ title: "First store", body: "one" });
+    await second.write({ title: "Second store", body: "two" });
+
+    const firstResult = await first.search({});
+    const secondResult = await second.search({});
+    expect(firstResult.entries.map((e) => e.title)).toEqual(["First store"]);
+    expect(secondResult.entries.map((e) => e.title)).toEqual(["Second store"]);
+    await fs.rm(secondDir, { recursive: true, force: true });
+  });
 });
