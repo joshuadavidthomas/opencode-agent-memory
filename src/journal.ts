@@ -85,6 +85,13 @@ function embeddingPath(entryPath: string): string {
   return entryPath.replace(/\.md$/, ".embedding");
 }
 
+function titleMatches(queryText: string, title: string): boolean {
+  const q = queryText.trim().toLowerCase();
+  if (!q) return false;
+  const t = title.trim().toLowerCase();
+  return t.includes(q) || q.includes(t);
+}
+
 async function readEntryFile(filePath: string): Promise<JournalEntry> {
   const raw = await fs.readFile(filePath, "utf-8");
   const { frontmatterText, body } = splitFrontmatter(raw);
@@ -310,6 +317,10 @@ export function createJournalStore(configDir?: string): JournalStore {
             // Text search fallback
             const haystack = `${entry.title}\n${entry.body}`.toLowerCase();
             score = haystack.includes(query.text.toLowerCase()) ? 1 : 0;
+          }
+
+          if (titleMatches(query.text, entry.title)) {
+            score = Math.max(score, 0.75);
           }
 
           if (score <= 0) continue;
