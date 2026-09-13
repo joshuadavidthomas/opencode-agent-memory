@@ -43,18 +43,28 @@ export function renderMemoryBlocks(blocks: MemoryBlock[]): string {
       ? block.value.split("\n").map((line, i) => `${i + 1}→ ${line}`).join("\n")
       : "";
 
+    const overage = block.value.length - block.limit;
+    const overLimitLine =
+      overage > 0
+        ? `\n- over_limit=true (over=${overage} chars)`
+        : "\n- over_limit=false";
+    const overLimitWarning =
+      overage > 0
+        ? `\nThis block is OVER its chars_limit. Compact it soon (merge or drop superseded lines, or raise its limit) so the next snapshot stays lean.`
+        : "";
+
     const memoryBlock = `<${block.label}>
 <description>
 ${desc}
 </description>
 <metadata>
 - chars_current=${block.value.length}
-- chars_limit=${block.limit}
+- chars_limit=${block.limit}${overLimitLine}
 - read_only=${block.readOnly}
 - scope=${block.scope}
 </metadata>
 <warning>
-${LINE_NUMBER_WARNING}
+${LINE_NUMBER_WARNING}${overLimitWarning}
 </warning>
 <value>
 ${numberedValue}

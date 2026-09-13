@@ -104,6 +104,36 @@ function validateLabel(label: string): string {
   return trimmed;
 }
 
+/**
+ * Rich "old text not found" error. Returning the current value inline turns a
+ * blind retry (re-reading a huge context) into a single self-correcting step.
+ */
+function notFoundError(
+  scope: MemoryScope,
+  label: string,
+  current: string,
+  oldText: string,
+  editIndex?: number,
+): Error {
+  const which = editIndex === undefined ? "" : ` (edit #${editIndex + 1})`;
+  return new Error(
+    `Old text not found in ${scope}:${label}${which}.\n` +
+      `Searched for:\n${oldText}\n\n` +
+      `Current value of ${scope}:${label} (chars=${current.length}):\n${current}`,
+  );
+}
+
+export type MemoryWriteResult = {
+  scope: MemoryScope;
+  label: string;
+  chars: number;
+  limit: number;
+  /** chars above the limit (0 when within budget). The write still succeeds. */
+  overage: number;
+};
+
+export type MemoryEdit = { oldText: string; newText: string };
+
 export type MemoryStore = {
   ensureSeed(): Promise<void>;
   listBlocks(scope: MemoryScope | "all"): Promise<MemoryBlock[]>;
@@ -113,8 +143,20 @@ export type MemoryStore = {
     label: string,
     value: string,
     opts?: { description?: string; limit?: number },
-  ): Promise<void>;
-  replaceInBlock(scope: MemoryScope, label: string, oldText: string, newText: string): Promise<void>;
+  ): Promise<MemoryWriteResult>;
+  replaceInBlock(
+    scope: MemoryScope,
+    label: string,
+    oldText: string,
+    newText: string,
+    opts?: { limit?: number },
+  ): Promise<MemoryWriteResult>;
+  replaceManyInBlock(
+    scope: MemoryScope,
+    label: string,
+    edits: MemoryEdit[],
+    opts?: { limit?: number },
+  ): Promise<MemoryWriteResult>;
 };
 
 const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
@@ -251,12 +293,9 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
       const description = (opts?.description ?? existing?.description ?? "").trim();
       const limit = opts?.limit ?? existing?.limit ?? 5000;
 
-      if (value.length > limit) {
-        throw new Error(
-          `Value too large for ${scope}:${safeLabel} (chars=${value.length}, limit=${limit}).`,
-        );
-      }
-
+      // Soft limit: a write is never rejected for size. The block may
+      // temporarily exceed `limit`; render marks it OVER_LIMIT so the model
+      // compacts it. Rejecting here only forced costly full-block retries.
       await writeBlockFile(filePath, {
         label: safeLabel,
         description,
@@ -264,32 +303,59 @@ export function createMemoryStore(projectDirectory: string): MemoryStore {
         readOnly: existing?.readOnly ?? false,
         value,
       });
+
+      return {
+        scope,
+        label: safeLabel,
+        chars: value.length,
+        limit,
+        overage: Math.max(0, value.length - limit),
+      };
     },
 
-    async replaceInBlock(scope, label, oldText, newText) {
+    async replaceInBlock(scope, label, oldText, newText, opts) {
+      return this.replaceManyInBlock(scope, label, [{ oldText, newText }], opts);
+    },
+
+    async replaceManyInBlock(scope, label, edits, opts) {
       const block = await this.getBlock(scope, label);
       if (block.readOnly) {
         throw new Error(`Memory block is read-only: ${scope}:${block.label}`);
       }
-
-      if (!block.value.includes(oldText)) {
-        throw new Error(`Old text not found in ${scope}:${block.label}.`);
+      if (edits.length === 0) {
+        throw new Error(`No edits provided for ${scope}:${block.label}.`);
       }
 
-      const next = block.value.replace(oldText, newText);
-      if (next.length > block.limit) {
-        throw new Error(
-          `Value too large for ${scope}:${block.label} after replace (chars=${next.length}, limit=${block.limit}).`,
-        );
+      let next = block.value;
+      for (const [i, edit] of edits.entries()) {
+        const { oldText, newText } = edit;
+        if (oldText.length === 0) {
+          throw new Error(`Edit #${i + 1} has an empty oldText for ${scope}:${block.label}.`);
+        }
+        if (!next.includes(oldText)) {
+          throw notFoundError(scope, block.label, next, oldText, i);
+        }
+        next = next.replace(oldText, newText);
       }
 
+      const limit = opts?.limit ?? block.limit;
+
+      // Soft limit: see setBlock. Growing a near-full block is allowed.
       await writeBlockFile(block.filePath, {
         label: block.label,
         description: block.description,
-        limit: block.limit,
+        limit,
         readOnly: block.readOnly,
         value: next,
       });
+
+      return {
+        scope,
+        label: block.label,
+        chars: next.length,
+        limit,
+        overage: Math.max(0, next.length - limit),
+      };
     },
   };
 }

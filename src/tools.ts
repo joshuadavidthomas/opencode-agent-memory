@@ -1,7 +1,21 @@
 import { tool } from "@opencode-ai/plugin";
 
 import type { JournalStore } from "./journal";
-import type { MemoryScope, MemoryStore } from "./memory";
+import type {
+  MemoryBlock,
+  MemoryEdit,
+  MemoryScope,
+  MemoryStore,
+  MemoryWriteResult,
+} from "./memory";
+
+function formatWriteResult(verb: string, result: MemoryWriteResult): string {
+  const base = `${verb} memory block ${result.scope}:${result.label} (chars=${result.chars}/${result.limit}).`;
+  if (result.overage > 0) {
+    return `${base} OVER LIMIT by ${result.overage} chars — it will render marked over_limit until compacted. Trim it or raise its limit.`;
+  }
+  return base;
+}
 
 export function MemoryList(store: MemoryStore) {
   return tool({
@@ -29,7 +43,11 @@ export function MemoryList(store: MemoryStore) {
 
 export function MemorySet(store: MemoryStore) {
   return tool({
-    description: "Create or update a memory block (full overwrite).",
+    description:
+      "Create or update a memory block (full overwrite). " +
+      "The optional `limit` sets the block's in-context budget (default 5000 chars). " +
+      "Exceeding it does NOT fail the write: the block is marked over_limit at render time until compacted. " +
+      "Prefer memory_replace for small edits — rewriting a whole block costs many output tokens.",
     args: {
       label: tool.schema.string(),
       scope: tool.schema.enum(["global", "project"]).optional(),
@@ -40,29 +58,97 @@ export function MemorySet(store: MemoryStore) {
     async execute(args) {
       // Default to "project" for mutations (safer default)
       const scope = (args.scope ?? "project") as MemoryScope;
-      await store.setBlock(scope, args.label, args.value, {
+      const result = await store.setBlock(scope, args.label, args.value, {
         description: args.description,
         limit: args.limit,
       });
-      return `Updated memory block ${scope}:${args.label}.`;
+      return formatWriteResult("Updated", result);
+    },
+  });
+}
+
+export function MemoryGet(store: MemoryStore) {
+  return tool({
+    description:
+      "Read the current on-disk value of a memory block. Unlike the session snapshot " +
+      "(frozen for prompt caching), this is always fresh. Use it to build exact oldText " +
+      "for memory_replace and to confirm the result after an edit. If scope is omitted, " +
+      "the project scope is tried first, then global.",
+    args: {
+      label: tool.schema.string(),
+      scope: tool.schema.enum(["global", "project"]).optional(),
+    },
+    async execute(args) {
+      const scopes: MemoryScope[] = args.scope
+        ? [args.scope as MemoryScope]
+        : ["project", "global"];
+
+      let block: MemoryBlock | undefined;
+      for (const scope of scopes) {
+        try {
+          block = await store.getBlock(scope, args.label);
+          break;
+        } catch {
+          // try next scope
+        }
+      }
+
+      if (!block) {
+        return `Memory block not found: ${args.label} (scopes tried: ${scopes.join(", ")}).`;
+      }
+
+      return [
+        `${block.scope}:${block.label}`,
+        `chars=${block.value.length}/${block.limit} read_only=${block.readOnly}`,
+        block.description,
+        "",
+        block.value,
+      ].join("\n");
     },
   });
 }
 
 export function MemoryReplace(store: MemoryStore) {
   return tool({
-    description: "Replace a substring within a memory block.",
+    description:
+      "Replace text within a memory block. Two modes: a single (oldText, newText) pair, " +
+      "or `edits` with several {oldText,newText} pairs applied in order in ONE call — use " +
+      "the batch form to drop superseded lines and add new ones together, even on a full block. " +
+      "oldText must match exactly (use memory_get first if unsure). The chars_limit is soft: " +
+      "growing a block past it succeeds and is marked over_limit at render time. " +
+      "Optional `limit` updates the block's budget.",
     args: {
       label: tool.schema.string(),
       scope: tool.schema.enum(["global", "project"]).optional(),
-      oldText: tool.schema.string(),
-      newText: tool.schema.string(),
+      oldText: tool.schema.string().optional(),
+      newText: tool.schema.string().optional(),
+      edits: tool.schema
+        .array(
+          tool.schema.object({
+            oldText: tool.schema.string(),
+            newText: tool.schema.string(),
+          }),
+        )
+        .optional(),
+      limit: tool.schema.number().int().positive().optional(),
     },
     async execute(args) {
       // Default to "project" for mutations (safer default)
       const scope = (args.scope ?? "project") as MemoryScope;
-      await store.replaceInBlock(scope, args.label, args.oldText, args.newText);
-      return `Updated memory block ${scope}:${args.label}.`;
+
+      let edits: MemoryEdit[];
+      if (args.edits && args.edits.length > 0) {
+        edits = args.edits;
+      } else if (args.oldText !== undefined && args.newText !== undefined) {
+        edits = [{ oldText: args.oldText, newText: args.newText }];
+      } else {
+        return "memory_replace needs either (oldText, newText) or a non-empty edits array.";
+      }
+
+      const result = await store.replaceManyInBlock(scope, args.label, edits, {
+        limit: args.limit,
+      });
+      return formatWriteResult("Updated", result);
     },
   });
 }

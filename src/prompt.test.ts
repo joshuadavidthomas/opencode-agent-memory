@@ -68,6 +68,42 @@ describe("renderMemoryBlocks", () => {
     expect(xml).toContain("</memory_metadata>");
   });
 
+  test("marks over_limit when value exceeds limit", () => {
+    const xml = renderMemoryBlocks([
+      {
+        scope: "global",
+        label: "human",
+        description: "User prefs",
+        limit: 3,
+        readOnly: false,
+        value: "hello",
+        filePath: "/tmp/human.md",
+        lastModified: new Date("2025-01-15T10:30:00Z"),
+      },
+    ]);
+
+    expect(xml).toContain("over_limit=true (over=2 chars)");
+    expect(xml).toContain("This block is OVER its chars_limit");
+  });
+
+  test("marks over_limit=false when within budget", () => {
+    const xml = renderMemoryBlocks([
+      {
+        scope: "global",
+        label: "human",
+        description: "User prefs",
+        limit: 100,
+        readOnly: false,
+        value: "hi",
+        filePath: "/tmp/human.md",
+        lastModified: new Date("2025-01-15T10:30:00Z"),
+      },
+    ]);
+
+    expect(xml).toContain("over_limit=false");
+    expect(xml).not.toContain("This block is OVER its chars_limit");
+  });
+
   test("handles empty value gracefully", () => {
     const xml = renderMemoryBlocks([
       {
