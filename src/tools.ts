@@ -153,6 +153,69 @@ export function MemoryReplace(store: MemoryStore) {
   });
 }
 
+export function MemoryOversized(store: MemoryStore) {
+  return tool({
+    description:
+      "Deterministically list memory blocks that are close to (or over) their chars_limit, " +
+      "for debugging/compaction sessions. Returns metadata only (label, scope, description, " +
+      "exact size, percentage, free/over) — never the block value. Sorted worst-first. " +
+      "Filters: `threshold` (percent of limit, default 90), `scope`, and `name` " +
+      "(case-insensitive substring of the label).",
+    args: {
+      threshold: tool.schema.number().min(0).max(100).optional(),
+      scope: tool.schema.enum(["all", "global", "project"]).optional(),
+      name: tool.schema.string().optional(),
+    },
+    async execute(args) {
+      const threshold = args.threshold ?? 90;
+      const scope = (args.scope ?? "all") as MemoryScope | "all";
+      const needle = args.name?.trim().toLowerCase();
+
+      let blocks = await store.listBlocks(scope);
+      if (needle) {
+        blocks = blocks.filter((b) => b.label.toLowerCase().includes(needle));
+      }
+
+      const rows = blocks
+        .map((block) => {
+          const pct = block.limit > 0 ? (block.value.length / block.limit) * 100 : 0;
+          return {
+            block,
+            pct,
+            free: Math.max(0, block.limit - block.value.length),
+            over: Math.max(0, block.value.length - block.limit),
+          };
+        })
+        .filter((row) => row.pct >= threshold)
+        .sort((a, b) => b.pct - a.pct);
+
+      const filterNote = needle ? ` matching "${args.name}"` : "";
+      if (rows.length === 0) {
+        return `No memory blocks at or above ${threshold}% of their limit (checked ${blocks.length}, scope=${scope}${filterNote}).`;
+      }
+
+      const overCount = rows.filter((row) => row.over > 0).length;
+      const lines = rows.map((row, i) => {
+        const { block } = row;
+        const head =
+          `${i + 1}. ${block.scope}:${block.label} — ${row.pct.toFixed(1)}% ` +
+          `(chars=${block.value.length}/${block.limit}, free=${row.free}, over=${row.over}) ` +
+          `read_only=${block.readOnly}`;
+        return block.description ? `${head}\n   ${block.description}` : head;
+      });
+
+      return [
+        `Oversized memory blocks (>= ${threshold}% of limit): ${rows.length} of ${blocks.length}${filterNote}, worst first.`,
+        "",
+        lines.join("\n"),
+        "",
+        `Summary: ${overCount} over limit, ${rows.length} at/above threshold. ` +
+          `Inspect with memory_get, then compact with memory_replace (batch edits).`,
+      ].join("\n");
+    },
+  });
+}
+
 export type JournalContext = {
   directory: string;
   model: string;
