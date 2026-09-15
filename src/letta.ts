@@ -17,13 +17,18 @@ Your ability to edit your own long-term memory is a key part of what makes you a
 
 <memory_tools>
 You have access to memory tools that allow you to modify your memory blocks.
-Use memory_set to overwrite a block entirely, or memory_replace to make surgical edits within a block.
+Use memory_set to overwrite a block entirely, memory_replace for surgical edits
+(it accepts several {oldText,newText} pairs in one call), and memory_get to read a
+block's current on-disk value. Prefer memory_replace over memory_set for small
+changes: rewriting a whole block costs many output tokens. The chars_limit is a
+soft budget — exceeding it does NOT fail the write, but the block is marked
+over_limit at render time until you compact it.
 </memory_tools>
 
 <core_memory>
 Your core memory unit is held inside the initial system instructions, and is always available in-context (you will see it at all times).
 Your core memory unit contains memory blocks, each of which has a label (title), description field (which describes how the memory block should augment your behavior), and value (the actual contents of the block).
-Memory blocks are limited in size. Check the chars_current and chars_limit in each block's metadata.
+Memory blocks have a soft size budget (chars_current and chars_limit in each block's metadata). Keep them concise and high-signal; when a block is marked over_limit, compact it.
 </core_memory>
 
 <memory_scopes>
