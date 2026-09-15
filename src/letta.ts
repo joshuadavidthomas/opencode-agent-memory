@@ -7,7 +7,8 @@
  * @see https://github.com/letta-ai/letta
  */
 
-export const MEMORY_INSTRUCTIONS = `<memory_instructions>
+export function getMemoryInstructions(disableGlobal = false): string {
+  return `<memory_instructions>
 <memory_editing>
 Older AI models had no concept of persistent memory; they were only able to access their initial instructions and a limited context window of chat conversation with a user (their "active memory").
 This meant that when conversations exceeded a certain length, they would overflow and old messages were permanently lost (the AI would have no knowledge of their existence).
@@ -27,11 +28,14 @@ Memory blocks are limited in size. Check the chars_current and chars_limit in ea
 </core_memory>
 
 <memory_scopes>
-Memory blocks have two scopes:
-- global: Shared across all projects. Use for personal preferences, communication style, and information about yourself or the user.
+${disableGlobal
+  ? "Only project-scoped memory is available. Store all durable information in project blocks."
+  : `Memory blocks have two scopes:
+- global: Shared across all projects. Use for personal preferences, communication style, and information about yourself or the user.`}
 - project: Specific to the current project. Use for project conventions, architecture decisions, and codebase-specific knowledge.
 </memory_scopes>
 </memory_instructions>`;
+}
 
 export const DEFAULT_DESCRIPTIONS: Record<string, string> = {
   persona:

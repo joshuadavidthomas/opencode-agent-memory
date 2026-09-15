@@ -57,7 +57,7 @@ export const MemoryPlugin: Plugin = async ({ directory }) => {
 
     "experimental.chat.system.transform": async (_input, output) => {
       const blocks = await store.listBlocks("all");
-      const xml = renderMemoryBlocks(blocks);
+      const xml = renderMemoryBlocks(blocks, { disableGlobal });
       if (!xml) return;
 
       // Insert early (right after provider header) for salience.

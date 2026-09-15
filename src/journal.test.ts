@@ -51,11 +51,48 @@ describe("loadConfig", () => {
     expect(config.journal?.enabled).toBe(true);
   });
 
-  test("returns empty config when file has invalid JSON", async () => {
+  test.each([
+    "not json{{{",
+    "null",
+    "[]",
+    '{"memory": null}',
+    '{"memory": {"disable_global": "true"}}',
+  ])("rejects invalid config rather than enabling global memory: %s", async (raw) => {
     const dir = await mkTmpDir();
-    await fs.writeFile(path.join(dir, "agent-memory.json"), "not json{{{");
-    const config = await loadConfig(dir);
-    expect(config).toEqual({});
+    try {
+      await fs.writeFile(path.join(dir, "agent-memory.json"), raw);
+      await expect(loadConfig(dir)).rejects.toThrow("agent-memory.json");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects unreadable config rather than using defaults", async () => {
+    const dir = await mkTmpDir();
+    try {
+      await fs.mkdir(path.join(dir, "agent-memory.json"));
+      await expect(loadConfig(dir)).rejects.toThrow("agent-memory.json");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    { enabled: "yes" },
+    { enabled: true, tags: [{ name: "perf" }] },
+  ])("preserves memory isolation when journal config is invalid: %j", async (journal) => {
+    const dir = await mkTmpDir();
+    try {
+      await fs.writeFile(
+        path.join(dir, "agent-memory.json"),
+        JSON.stringify({ memory: { disable_global: true }, journal }),
+      );
+      const config = await loadConfig(dir);
+      expect(config.memory?.disable_global).toBe(true);
+      expect(config.journal).toBeUndefined();
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("returns custom tags from config", async () => {

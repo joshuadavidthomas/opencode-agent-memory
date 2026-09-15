@@ -14,12 +14,14 @@ const TagSchema = z.looseObject({
 });
 
 const ConfigSchema = z.looseObject({
+  // Invalid opt-in journal settings must not discard memory isolation.
   journal: z
     .looseObject({
       enabled: z.boolean().optional(),
       tags: z.array(TagSchema).optional(),
     })
-    .optional(),
+    .optional()
+    .catch(undefined),
   memory: z
     .looseObject({
       disable_global: z.boolean().optional(),
@@ -36,11 +38,13 @@ export async function loadConfig(
   const configPath = path.join(dir, "agent-memory.json");
   try {
     const raw = await fs.readFile(configPath, "utf-8");
-    const parsed = ConfigSchema.safeParse(JSON.parse(raw));
-    if (!parsed.success) return {};
-    return parsed.data;
-  } catch {
-    return {};
+    return ConfigSchema.parse(JSON.parse(raw));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(
+      `Failed to load agent memory config at ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }
 

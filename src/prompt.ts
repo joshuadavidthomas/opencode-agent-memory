@@ -1,5 +1,5 @@
 import type { MemoryBlock } from "./memory";
-import { MEMORY_INSTRUCTIONS } from "./letta";
+import { getMemoryInstructions } from "./letta";
 
 const LINE_NUMBER_WARNING =
   "# NOTE: Line numbers shown below (with arrows like '1→') are to help during editing. Do NOT include line number prefixes in your memory edit tool calls.";
@@ -19,13 +19,16 @@ function renderMemoryMetadata(blocks: MemoryBlock[]): string {
 </memory_metadata>`;
 }
 
-export function renderMemoryBlocks(blocks: MemoryBlock[]): string {
+export function renderMemoryBlocks(
+  blocks: MemoryBlock[],
+  opts?: { disableGlobal?: boolean },
+): string {
   if (blocks.length === 0) {
     return "";
   }
 
   const parts: string[] = [
-    MEMORY_INSTRUCTIONS,
+    getMemoryInstructions(opts?.disableGlobal),
     "",
     "<memory_blocks>",
     "The following memory blocks are currently engaged in your core memory unit:",

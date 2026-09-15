@@ -84,6 +84,9 @@ describe("renderMemoryBlocks", () => {
 
     expect(xml).toContain("<notes>");
     expect(xml).toContain("<value>\n\n</value>");
+    // Available scopes come from configuration, not the blocks currently present.
+    expect(xml).toContain("Memory blocks have two scopes:");
+    expect(xml).toContain("- global:");
     // Empty value - the value section should be truly empty
     const valueMatch = xml.match(/<value>\n(.*?)\n<\/value>/s);
     expect(valueMatch).toBeTruthy();

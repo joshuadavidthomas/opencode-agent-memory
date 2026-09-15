@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 
 import { createMemoryStore } from "./memory";
@@ -10,8 +11,22 @@ async function mkTmpDir(): Promise<string> {
 }
 
 describe("store", () => {
+  let home: string;
+  let dir: string;
+  let homedirSpy: { mockRestore(): void };
+
+  beforeEach(async () => {
+    home = await mkTmpDir();
+    homedirSpy = spyOn(os, "homedir").mockReturnValue(home);
+    dir = path.join(home, "project");
+  });
+
+  afterEach(async () => {
+    homedirSpy.mockRestore();
+    await fs.rm(home, { recursive: true, force: true });
+  });
+
   test("seeds and writes blocks", async () => {
-    const dir = await mkTmpDir();
     const store = createMemoryStore(dir);
     await store.ensureSeed();
 
@@ -25,5 +40,47 @@ describe("store", () => {
     await store.setBlock("project", "project", "hello");
     const b = await store.getBlock("project", "project");
     expect(b.value).toBe("hello");
+  });
+
+  test("project-only seeding never creates global memory", async () => {
+    const store = createMemoryStore(dir, { disableGlobal: true });
+    await store.ensureSeed();
+
+    expect((await store.listBlocks("all")).map((b) => `${b.scope}:${b.label}`))
+      .toEqual(["project:project"]);
+    await expect(fs.access(path.join(home, ".config", "opencode", "memory")))
+      .rejects.toThrow();
+    expect(await fs.readFile(path.join(dir, ".opencode", "memory", ".gitignore"), "utf-8"))
+      .toBe("*\n");
+  });
+
+  test("disabled global access preserves files for re-enabling", async () => {
+    const enabled = createMemoryStore(dir);
+    await enabled.ensureSeed();
+    await enabled.setBlock("global", "human", "Shared preferences");
+    await enabled.setBlock("project", "human", "Project preferences");
+    const globalBlocks = await enabled.listBlocks("global");
+    const originals = await Promise.all(globalBlocks.map((b) => fs.readFile(b.filePath, "utf-8")));
+
+    const disabled = createMemoryStore(dir, { disableGlobal: true });
+    await disabled.ensureSeed();
+    expect(await disabled.listBlocks("global")).toEqual([]);
+    expect((await disabled.listBlocks("all")).map((b) => `${b.scope}:${b.label}`))
+      .toEqual(["project:project", "project:human"]);
+    await expect(disabled.getBlock("global", "human")).rejects.toThrow("Global memory scope is disabled");
+    await expect(disabled.setBlock("global", "human", "wrong")).rejects.toThrow("Global memory scope is disabled");
+    await expect(disabled.setBlock("global", "new-block", "wrong")).rejects.toThrow("Global memory scope is disabled");
+    await expect(disabled.replaceInBlock("global", "human", "Shared", "wrong"))
+      .rejects.toThrow("Global memory scope is disabled");
+    await disabled.replaceInBlock("project", "human", "Project", "Updated");
+    expect((await disabled.getBlock("project", "human")).value).toBe("Updated preferences");
+
+    const restored = createMemoryStore(dir, { disableGlobal: false });
+    await restored.ensureSeed();
+    expect((await restored.listBlocks("global")).map((b) => b.label))
+      .toEqual(["persona", "human"]);
+    expect((await restored.getBlock("global", "human")).value).toBe("Shared preferences");
+    expect(await Promise.all(globalBlocks.map((b) => fs.readFile(b.filePath, "utf-8"))))
+      .toEqual(originals);
   });
 });
