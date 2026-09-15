@@ -82,7 +82,7 @@ Journal entries are append-only markdown files with YAML frontmatter, stored in 
 
 ### Default Blocks
 
-Three blocks are seeded on first run:
+By default, three blocks are seeded on first run:
 
 | Block | Scope | Purpose |
 |-------|-------|---------|
@@ -96,6 +96,26 @@ These are just starting points. Create whatever blocks make sense for your workf
 
 - **Global blocks**: `~/.config/opencode/memory/*.md`
 - **Project blocks**: `.opencode/memory/*.md` (auto-gitignored)
+
+### Project-only Memory
+
+To disable global memory blocks, set `memory.disable_global` in `~/.config/opencode/agent-memory.json`:
+
+```json
+{
+  "memory": {
+    "disable_global": true
+  }
+}
+```
+
+Restart OpenCode after changing this setting. It applies to all projects using this config file. The default is `false`; omitting the setting keeps global memory enabled.
+
+When enabled, only the `project` block is seeded, and memory tools and system instructions use project scope only. Global blocks are not read, listed, or modified. Existing global files stay on disk untouched; set the option to `false` or remove it and restart to use them again. No migration is needed.
+
+This setting only affects memory blocks. The optional journal remains shared across projects and is controlled separately by `journal.enabled`.
+
+A missing config file uses the defaults. Unreadable files, malformed JSON, and invalid memory settings (such as `"disable_global": "true"` instead of a boolean) stop plugin initialization with a config error rather than silently enabling global memory. Invalid journal settings disable the journal without discarding valid memory settings.
 
 ### Block Format
 
