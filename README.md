@@ -115,7 +115,9 @@ When enabled, only the `project` block is seeded, and memory tools and system in
 
 This setting only affects memory blocks. The optional journal remains shared across projects and is controlled separately by `journal.enabled`.
 
-A missing config file uses the defaults. Unreadable files, malformed JSON, and invalid memory settings (such as `"disable_global": "true"` instead of a boolean) stop plugin initialization with a config error rather than silently enabling global memory. Invalid journal settings disable the journal without discarding valid memory settings.
+A missing config file uses the defaults. For backward compatibility, unreadable files, malformed JSON, and non-object configuration also use defaults, with global memory enabled. OpenCode logs a warning on these failures. A malformed file cannot enforce the opt-out, even if it contains `disable_global: true`.
+
+In a valid JSON object, invalid memory settings (such as `"disable_global": "true"` instead of a boolean) stop plugin initialization with a config error. Invalid journal settings disable the journal without discarding valid memory settings.
 
 ### Block Format
 

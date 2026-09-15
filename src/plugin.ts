@@ -17,8 +17,12 @@ import {
 } from "./tools";
 import type { JournalContext } from "./tools";
 
-export const MemoryPlugin: Plugin = async ({ directory }) => {
-  const config = await loadConfig();
+export const MemoryPlugin: Plugin = async ({ directory, client }) => {
+  const config = await loadConfig(undefined, (message) => {
+    void client.app.log({
+      body: { service: "agent-memory", level: "warn", message },
+    }).catch(() => {});
+  });
   const disableGlobal = config.memory?.disable_global === true;
 
   const store = createMemoryStore(directory, { disableGlobal });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { tool, type PluginInput } from "@opencode-ai/plugin";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -94,6 +94,33 @@ describe("memory plugin configuration", () => {
         .rejects.toThrow("Global memory scope is disabled");
     }
     expect(await fs.readFile(globalPath, "utf-8")).toBe(original);
+  });
+
+  test.each(["success", "failure"])("malformed config uses defaults with logging %s", async (logResult) => {
+    await fs.writeFile(
+      path.join(configDir, "agent-memory.json"),
+      '{"memory": {"disable_global": true}',
+    );
+    const log = mock(async () => {
+      if (logResult === "failure") throw new Error("Log server unavailable");
+      return {};
+    });
+    const hooks = await MemoryPlugin({
+      directory,
+      client: { app: { log } },
+    } as unknown as PluginInput);
+
+    expect(log).toHaveBeenCalledWith({
+      body: {
+        service: "agent-memory",
+        level: "warn",
+        message: expect.stringContaining("global memory enabled"),
+      },
+    });
+    const listed = await hooks.tool!.memory_list!.execute({}, context);
+    expect(listed).toContain("global:human");
+    expect(listed).toContain("project:project");
+    expect(tool.schema.safeParse(hooks.tool!.memory_set!.args.scope!, "global").success).toBe(true);
   });
 
   test("invalid memory settings stop initialization before seeding", async () => {

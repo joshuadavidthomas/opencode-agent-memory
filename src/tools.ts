@@ -19,6 +19,7 @@ export function MemoryList(store: MemoryStore, opts?: MemoryToolOptions) {
       scope: tool.schema.enum(scopeValues).optional(),
     },
     async execute(args) {
+      // Default to "all" for list (show everything)
       const scope = (args.scope ?? "all") as MemoryScope | "all";
       const blocks = await store.listBlocks(scope);
       if (blocks.length === 0) {
@@ -51,6 +52,7 @@ export function MemorySet(store: MemoryStore, opts?: MemoryToolOptions) {
       limit: tool.schema.number().int().positive().optional(),
     },
     async execute(args) {
+      // Default to "project" for mutations (safer default)
       const scope = (args.scope ?? "project") as MemoryScope;
       await store.setBlock(scope, args.label, args.value, {
         description: args.description,
@@ -76,6 +78,7 @@ export function MemoryReplace(store: MemoryStore, opts?: MemoryToolOptions) {
       newText: tool.schema.string(),
     },
     async execute(args) {
+      // Default to "project" for mutations (safer default)
       const scope = (args.scope ?? "project") as MemoryScope;
       await store.replaceInBlock(scope, args.label, args.oldText, args.newText);
       return `Updated memory block ${scope}:${args.label}.`;

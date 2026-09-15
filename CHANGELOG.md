@@ -24,7 +24,8 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ### Changed
 
-- Invalid or unreadable memory configuration now reports an initialization error instead of silently using defaults; invalid journal settings no longer discard valid memory settings
+- Invalid memory settings in a valid JSON object report an initialization error; invalid journal settings no longer discard valid memory settings
+- Unreadable, malformed, or non-object configuration retains the default-settings fallback (global memory enabled), now with a warning in OpenCode's logs
 
 ## [0.2.0]
 

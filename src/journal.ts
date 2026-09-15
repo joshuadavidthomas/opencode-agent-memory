@@ -33,19 +33,30 @@ export type AgentMemoryConfig = z.infer<typeof ConfigSchema>;
 
 export async function loadConfig(
   configDir?: string,
+  warn?: (message: string) => void,
 ): Promise<AgentMemoryConfig> {
   const dir = configDir ?? path.join(os.homedir(), ".config", "opencode");
   const configPath = path.join(dir, "agent-memory.json");
+  let config: unknown;
   try {
     const raw = await fs.readFile(configPath, "utf-8");
-    return ConfigSchema.parse(JSON.parse(raw));
+    config = z.looseObject({}).parse(JSON.parse(raw));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      warn?.(`Ignoring unreadable or invalid config at ${configPath}; using defaults with global memory enabled.`);
+    }
+    return {};
+  }
+
+  // Keep memory validation outside the legacy file/object fallback above.
+  const parsed = ConfigSchema.safeParse(config);
+  if (!parsed.success) {
     throw new Error(
-      `Failed to load agent memory config at ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
+      `Invalid memory settings in ${configPath}: ${parsed.error.message}`,
+      { cause: parsed.error },
     );
   }
+  return parsed.data;
 }
 
 export type JournalTag = {
