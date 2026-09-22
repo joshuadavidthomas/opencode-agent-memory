@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
@@ -437,5 +437,84 @@ describe("journal store", () => {
     const result = await store.search({ text: "Rust performance" });
     // Should find at least the matching entry
     expect(result.total).toBeGreaterThan(0);
+  });
+
+  test("exact title matching survives embedding dilution from a long body", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+    await store.write({ title: "Exact title", body: "x".repeat(1000) });
+
+    const result = await store.search({ text: "Exact title" });
+
+    expect(result.entries.map((entry) => entry.title)).toContain("Exact title");
+  });
+
+  test("search cache reloads an entry when its embedding sidecar disappears", async () => {
+    tmpDir = await mkTmpDir();
+    const store = createJournalStore(tmpDir);
+    const entry = await store.write({ title: "Cached entry", body: "Cache behavior" });
+    await store.search({});
+    await fs.rm(entry.filePath.replace(/\.md$/, ".embedding"));
+
+    const result = await store.search({ text: "Cached entry" });
+
+    expect(result.entries[0]?.title).toBe("Cached entry");
+  });
+
+  test("journal caches are isolated between stores", async () => {
+    const firstDir = await mkTmpDir();
+    const secondDir = await mkTmpDir();
+    tmpDir = firstDir;
+    const first = createJournalStore(firstDir);
+    const second = createJournalStore(secondDir);
+    await first.write({ title: "First store", body: "one" });
+    await second.write({ title: "Second store", body: "two" });
+
+    expect((await first.search({})).entries.map((entry) => entry.title)).toEqual(["First store"]);
+    expect((await second.search({})).entries.map((entry) => entry.title)).toEqual(["Second store"]);
+    await fs.rm(secondDir, { recursive: true, force: true });
+  });
+
+  test("bounds cold journal reads without omitting entries", async () => {
+    tmpDir = await mkTmpDir();
+    const journalDir = path.join(tmpDir, "journal");
+    await fs.mkdir(journalDir);
+    for (let index = 0; index < 40; index++) {
+      const id = `20260101-000000-${String(index).padStart(3, "0")}`;
+      await fs.writeFile(
+        path.join(journalDir, `${id}.md`),
+        `---\ntitle: Entry ${index}\ntags: [bulk]\n---\nBody ${index}\n`,
+      );
+      await fs.writeFile(path.join(journalDir, `${id}.embedding`), "[1,0]");
+    }
+
+    const realReadFile = fs.readFile;
+    let activeReads = 0;
+    let maximumReads = 0;
+    const readFile = spyOn(fs, "readFile").mockImplementation((async (...args: unknown[]) => {
+      activeReads++;
+      maximumReads = Math.max(maximumReads, activeReads);
+      try {
+        if (activeReads > 32) {
+          const error = new Error("too many open files") as NodeJS.ErrnoException;
+          error.code = "EMFILE";
+          throw error;
+        }
+        await Bun.sleep(1);
+        return await (realReadFile as (...values: unknown[]) => Promise<unknown>)(...args);
+      } finally {
+        activeReads--;
+      }
+    }) as typeof fs.readFile);
+
+    try {
+      const result = await createJournalStore(tmpDir).search({});
+      expect(result.total).toBe(40);
+      expect(result.entries).toHaveLength(20);
+      expect(result.allTags).toEqual(["bulk"]);
+      expect(maximumReads).toBeLessThanOrEqual(32);
+    } finally {
+      readFile.mockRestore();
+    }
   });
 });
