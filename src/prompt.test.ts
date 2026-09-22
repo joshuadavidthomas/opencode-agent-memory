@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { MemoryBlock } from "./memory";
 import { renderMemoryBlocks } from "./prompt";
 
 describe("renderMemoryBlocks", () => {
@@ -47,9 +48,8 @@ describe("renderMemoryBlocks", () => {
     expect(xml).toContain("</memory_instructions>");
   });
 
-  test("includes memory metadata block with timestamps", () => {
-    const testDate = new Date("2025-01-15T10:30:00Z");
-    const xml = renderMemoryBlocks([
+  test("renders cache-stable metadata without request timestamps", () => {
+    const blocks: MemoryBlock[] = [
       {
         scope: "global",
         label: "human",
@@ -58,14 +58,34 @@ describe("renderMemoryBlocks", () => {
         readOnly: false,
         value: "hi",
         filePath: "/tmp/human.md",
-        lastModified: testDate,
+        lastModified: new Date("2025-01-15T10:30:00Z"),
+      },
+    ];
+    const first = renderMemoryBlocks(blocks);
+    const second = renderMemoryBlocks(blocks);
+
+    expect(first).toContain("<memory_metadata>");
+    expect(first).not.toContain("The current system date is:");
+    expect(first).not.toContain("Memory blocks were last modified:");
+    expect(second).toBe(first);
+  });
+
+  test("marks blocks that exceed their soft limit", () => {
+    const xml = renderMemoryBlocks([
+      {
+        scope: "project",
+        label: "notes",
+        description: "Notes",
+        limit: 3,
+        readOnly: false,
+        value: "hello",
+        filePath: "/tmp/notes.md",
+        lastModified: new Date("2025-01-15T10:30:00Z"),
       },
     ]);
 
-    expect(xml).toContain("<memory_metadata>");
-    expect(xml).toContain("The current system date is:");
-    expect(xml).toContain("Memory blocks were last modified:");
-    expect(xml).toContain("</memory_metadata>");
+    expect(xml).toContain("over_limit=true (over=2 chars)");
+    expect(xml).toContain("This block is OVER its chars_limit");
   });
 
   test("handles empty value gracefully", () => {

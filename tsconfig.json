@@ -8,5 +8,5 @@
     "noEmit": true,
     "moduleResolution": "bundler"
   },
-  "include": ["src", "tests"]
+  "include": ["index.ts", "src", "tests"]
 }

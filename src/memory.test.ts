@@ -83,4 +83,35 @@ describe("store", () => {
     expect(await Promise.all(globalBlocks.map((b) => fs.readFile(b.filePath, "utf-8"))))
       .toEqual(originals);
   });
+
+  test("soft limits report overage without rejecting writes", async () => {
+    const dir = await mkTmpDir();
+    const store = createMemoryStore(dir, { disableGlobal: true });
+    await store.ensureSeed();
+
+    const set = await store.setBlock("project", "project", "abcdef", { limit: 3 });
+    expect(set).toMatchObject({ chars: 6, limit: 3, overage: 3 });
+    const replace = await store.replaceInBlock("project", "project", "f", "fghi");
+    expect(replace).toMatchObject({ chars: 9, limit: 3, overage: 6 });
+    expect((await store.getBlock("project", "project")).value).toBe("abcdefghi");
+  });
+
+  test("batch replace is atomic and reports the current value on mismatch", async () => {
+    const dir = await mkTmpDir();
+    const store = createMemoryStore(dir, { disableGlobal: true });
+    await store.ensureSeed();
+    await store.setBlock("project", "project", "alpha\nbeta\ngamma");
+
+    await store.replaceManyInBlock("project", "project", [
+      { oldText: "beta", newText: "BETA" },
+      { oldText: "gamma", newText: "GAMMA" },
+    ]);
+    expect((await store.getBlock("project", "project")).value).toBe("alpha\nBETA\nGAMMA");
+
+    await expect(store.replaceManyInBlock("project", "project", [
+      { oldText: "alpha", newText: "ALPHA" },
+      { oldText: "missing", newText: "value" },
+    ])).rejects.toThrow(/Current value of project:project[\s\S]*ALPHA/);
+    expect((await store.getBlock("project", "project")).value).toBe("alpha\nBETA\nGAMMA");
+  });
 });
