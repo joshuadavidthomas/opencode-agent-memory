@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+tmp="$(mktemp -d)"
+port="${PORT:-$(bun -e 'const server = Bun.serve({ port: 0, fetch: () => new Response() }); process.stdout.write(String(server.port)); server.stop(true)')}"
+export OPENCODE_SERVER_PASSWORD="$(bun -e 'process.stdout.write(crypto.randomUUID())')"
+
+cleanup() {
+  if [[ -n "${server_pid:-}" ]]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+"$repo_root/.agents/opencode" serve --hostname 127.0.0.1 --port "$port" >"$tmp/server.log" 2>&1 &
+server_pid=$!
+
+# Loading an agent starts plugin activation for this location.
+ready=false
+for _ in $(seq 1 80); do
+  if curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" \
+    "http://127.0.0.1:$port/api/agent" >"$tmp/agents.json" 2>/dev/null; then
+    ready=true
+    break
+  fi
+  if ! kill -0 "$server_pid" 2>/dev/null; then
+    cat "$tmp/server.log" >&2
+    exit 1
+  fi
+  sleep 0.25
+done
+
+if [[ "$ready" != true ]]; then
+  echo "OpenCode v2 server did not become ready" >&2
+  exit 1
+fi
+
+# Activation is asynchronous, so poll until the plugin reaches its terminal state.
+for _ in $(seq 1 80); do
+  curl -fsS -u "opencode:$OPENCODE_SERVER_PASSWORD" \
+    "http://127.0.0.1:$port/api/plugin" >"$tmp/plugins.json"
+  if jq -e --arg root "$repo_root" '
+    .data[]
+    | select(.id == "opencode-agent-memory")
+    | select(.source.type == "local" and .source.path == ($root + "/index.ts"))
+    | select(.features.server == true and .state.status == "active")
+  ' "$tmp/plugins.json" >/dev/null; then
+    echo "OpenCode v2 host OK: package-root plugin is active"
+    exit 0
+  fi
+  sleep 0.25
+done
+
+echo "Plugin did not become active in the OpenCode v2 host" >&2
+jq '.data[] | select(.id == "opencode-agent-memory")' "$tmp/plugins.json" >&2
+exit 1

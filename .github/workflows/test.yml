@@ -31,4 +31,12 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
-        run: bun test
+        run: |
+          bun run typecheck
+          bun test
+
+      - name: Verify OpenCode v2 plugin integration
+        run: |
+          bun .agents/check-plugin.ts
+          .agents/check-package
+          .agents/check-opencode-v2

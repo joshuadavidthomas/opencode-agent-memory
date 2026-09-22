@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "$repo_root/.amp/runtime"
+tmp="$(mktemp -d "$repo_root/.amp/runtime/package-check.XXXXXX")"
+
+cleanup() {
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+mkdir -p "$tmp/tarball" "$tmp/node_modules/opencode-agent-memory"
+bun run --cwd "$repo_root" build >/dev/null
+npm pack --ignore-scripts --json --silent --pack-destination "$tmp/tarball" >"$tmp/pack.json"
+tarball="$tmp/tarball/$(jq -r '.[0].filename' "$tmp/pack.json")"
+tar -xzf "$tarball" --strip-components=1 -C "$tmp/node_modules/opencode-agent-memory"
+
+package="$tmp/node_modules/opencode-agent-memory"
+entry="$(jq -r '.exports["./server"] // .main' "$package/package.json")"
+if [[ "$entry" != *.js ]]; then
+  echo "Packed server entrypoint is not JavaScript: $entry" >&2
+  exit 1
+fi
+
+PACKAGE_ENTRY="$package/${entry#./}" node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
+
+const plugin = await import(pathToFileURL(process.env.PACKAGE_ENTRY).href);
+assert.equal(plugin.default.id, "opencode-agent-memory");
+assert.equal(typeof plugin.default.setup, "function");
+NODE
+
+echo "Package OK: packed JavaScript server entrypoint imports under Node"
