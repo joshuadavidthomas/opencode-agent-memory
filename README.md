@@ -38,7 +38,7 @@ Optionally, pin to a specific version for stability:
 
 ```json
 {
-  "plugins": ["opencode-agent-memory@0.2.0"]
+  "plugins": ["opencode-agent-memory@0.3.0"]
 }
 ```
 
