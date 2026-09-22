@@ -15,12 +15,12 @@ For background on the memory concept, see Letta's docs on [memory](https://docs.
 - **Persistent memory** - Information survives across sessions and context compaction
 - **Shared across sessions** - Global blocks shared across all projects, project blocks shared across sessions in that codebase
 - **Self-editing** - The agent can read and modify its own memory with dedicated tools
-- **System prompt injection** - Memory blocks appear in the system prompt, always in-context
+- **Cache-stable system context** - Memory is frozen per session and refreshed after context compaction, so edits do not repeatedly invalidate the provider prompt cache
 - **Journal** - Append-only entries with semantic search for capturing insights, decisions, and discoveries across sessions
 
 ## Requirements
 
-- [OpenCode](https://opencode.ai/) v1.0.115 or later
+- [OpenCode](https://opencode.ai/) v2.0.12 or later
 
 ## Installation
 
@@ -28,7 +28,7 @@ Add to your OpenCode config (`~/.config/opencode/opencode.json`):
 
 ```json
 {
-  "plugin": ["opencode-agent-memory"]
+  "plugins": ["opencode-agent-memory"]
 }
 ```
 
@@ -38,7 +38,7 @@ Optionally, pin to a specific version for stability:
 
 ```json
 {
-  "plugin": ["opencode-agent-memory@0.2.0"]
+  "plugins": ["opencode-agent-memory@0.2.0"]
 }
 ```
 
@@ -50,21 +50,26 @@ If you want to customize or contribute:
 
 ```bash
 git clone https://github.com/joshuadavidthomas/opencode-agent-memory ~/.config/opencode/opencode-agent-memory
-mkdir -p ~/.config/opencode/plugin
-ln -sf ~/.config/opencode/opencode-agent-memory/src/plugin.ts ~/.config/opencode/plugin/memory.ts
+cd ~/.config/opencode/opencode-agent-memory
+bun install
+bun run build
 ```
+
+Then add the checkout's absolute path to `plugins` in `~/.config/opencode/opencode.json`.
 
 ## Usage
 
 ### Memory Tools
 
-The plugin gives the agent 3 tools for managing memory:
+The plugin gives the agent 5 tools for managing memory:
 
 | Tool | Description |
 |------|-------------|
 | `memory_list` | List available memory blocks (labels, descriptions, sizes) |
+| `memory_get` | Read a block's current on-disk value and modification time |
 | `memory_set` | Create or update a memory block (full overwrite) |
-| `memory_replace` | Replace a substring within a memory block |
+| `memory_replace` | Apply one or several exact replacements atomically |
+| `memory_oversized` | List blocks close to or over their soft size budget |
 
 You interact with memory by editing the markdown files directly or asking the agent to update its memory.
 
@@ -92,6 +97,8 @@ By default, three blocks are seeded on first run:
 
 These are just starting points. Create whatever blocks make sense for your workflow - `debugging-notes`, `api-preferences`, `learned-patterns`, etc.
 
+Memory content is snapshotted when a session first uses it. Tool edits are immediately available through `memory_get` and remain visible in the conversation's tool results, while the injected snapshot stays byte-stable for prompt caching. OpenCode context compaction refreshes the snapshot from disk. Snapshots survive restarts and are cleaned up automatically.
+
 ### Memory Locations
 
 - **Global blocks**: `~/.config/opencode/memory/*.md`
@@ -115,6 +122,23 @@ When enabled, only the `project` block is seeded, and memory tools and system in
 
 This setting only affects memory blocks. The optional journal remains shared across projects and is controlled separately by `journal.enabled`.
 
+### Journal-only Mode
+
+To disable memory blocks and their tools while keeping the journal enabled:
+
+```json
+{
+  "memory": {
+    "enabled": false
+  },
+  "journal": {
+    "enabled": true
+  }
+}
+```
+
+This does not seed, read, or inject memory blocks. It exposes only the journal tools and leaves existing memory files untouched.
+
 A missing config file uses the defaults. For backward compatibility, unreadable files, malformed JSON, and non-object configuration also use defaults, with global memory enabled. OpenCode logs a warning on these failures. A malformed file cannot enforce the opt-out, even if it contains `disable_global: true`.
 
 In a valid JSON object, invalid memory settings (such as `"disable_global": "true"` instead of a boolean) stop plugin initialization with a config error. Invalid journal settings disable the journal without discarding valid memory settings.
@@ -127,10 +151,12 @@ Each block is a markdown file with YAML frontmatter:
 |-------|------|---------|-------------|
 | `label` | string | filename | Unique identifier for the block |
 | `description` | string | generic | Tells the agent how to use this block |
-| `limit` | integer | 5000 | Maximum characters allowed |
+| `limit` | integer | 5000 | Soft in-context character budget |
 | `read_only` | boolean | false | Prevent agent from modifying |
 
 All fields have defaults for graceful degradation, but `description` is essential - without it, the agent gets a generic fallback and won't know how to use the block effectively. See Letta's docs on [the importance of the description field](https://docs.letta.com/guides/agents/memory-blocks/#the-importance-of-the-description-field).
+
+Writes above `limit` succeed instead of forcing retry loops. Over-budget blocks are marked `over_limit` in the next session snapshot so the agent can compact them with `memory_replace` or intentionally raise the limit.
 
 ### Journal Configuration
 
@@ -174,13 +200,15 @@ Contributions are welcome! Here's how to set up for development:
 git clone https://github.com/joshuadavidthomas/opencode-agent-memory
 cd opencode-agent-memory
 bun install
+bun run build
 ```
 
-Then symlink the plugin to your OpenCode config:
+Then add the checkout's absolute path to your OpenCode config:
 
-```bash
-mkdir -p ~/.config/opencode/plugin
-ln -sf "$(pwd)/src/plugin.ts" ~/.config/opencode/plugin/memory.ts
+```json
+{
+  "plugins": ["/absolute/path/to/opencode-agent-memory"]
+}
 ```
 
 ## License
