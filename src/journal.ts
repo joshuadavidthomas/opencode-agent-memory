@@ -2,11 +2,13 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { z } from "zod";
 
 import { cosineSimilarity, generateEmbedding } from "./embeddings";
 import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./frontmatter";
+
+const JOURNAL_LOAD_CONCURRENCY = 16;
 
 const TagSchema = z.looseObject({
   name: z.string().min(1),
@@ -24,6 +26,7 @@ const ConfigSchema = z.looseObject({
     .catch(undefined),
   memory: z
     .looseObject({
+      enabled: z.boolean().optional(),
       disable_global: z.boolean().optional(),
     })
     .optional(),
@@ -105,6 +108,13 @@ function embeddingPath(entryPath: string): string {
   return entryPath.replace(/\.md$/, ".embedding");
 }
 
+function titleMatches(queryText: string, title: string): boolean {
+  const query = queryText.trim().toLowerCase();
+  if (!query) return false;
+  const normalizedTitle = title.trim().toLowerCase();
+  return normalizedTitle.includes(query) || query.includes(normalizedTitle);
+}
+
 async function readEntryFile(filePath: string): Promise<JournalEntry> {
   const raw = await fs.readFile(filePath, "utf-8");
   const { frontmatterText, body } = splitFrontmatter(raw);
@@ -147,6 +157,15 @@ async function loadEmbedding(entryPath: string): Promise<number[] | undefined> {
   }
 }
 
+type CachedEntry = {
+  entryMtimeMs: number;
+  entrySize: number;
+  embeddingMtimeMs: number;
+  embeddingSize: number;
+  entry: JournalEntry;
+  embedding: number[] | undefined;
+};
+
 const SAFE_ID = /^[a-zA-Z0-9_-]+$/;
 
 function validateId(id: string): string {
@@ -185,6 +204,7 @@ export function createJournalStore(configDir?: string): JournalStore {
     configDir ?? path.join(os.homedir(), ".config", "opencode"),
     "journal",
   );
+  const entryCache = new Map<string, CachedEntry>();
 
   return {
     async write(entry) {
@@ -285,14 +305,57 @@ export function createJournalStore(configDir?: string): JournalStore {
       // Collect all tags across every entry (before filtering)
       const tagSet = new Set<string>();
 
-      for (const file of files) {
+      const alive = new Set(files);
+      for (const key of entryCache.keys()) {
+        if (!alive.has(key)) entryCache.delete(key);
+      }
+
+      const loadEntry = async (file: string) => {
         const filePath = path.join(journalDir, file);
-        let entry: JournalEntry;
+        const sidecarPath = embeddingPath(filePath);
         try {
-          entry = await readEntryFile(filePath);
+          const [entryStat, embeddingStat] = await Promise.all([
+            fs.stat(filePath),
+            fs.stat(sidecarPath).catch(() => ({ mtimeMs: -1, size: -1 })),
+          ]);
+          const cached = entryCache.get(file);
+          if (
+            cached &&
+            cached.entryMtimeMs === entryStat.mtimeMs &&
+            cached.entrySize === entryStat.size &&
+            cached.embeddingMtimeMs === embeddingStat.mtimeMs &&
+            cached.embeddingSize === embeddingStat.size
+          ) {
+            return cached;
+          }
+          const [entry, embedding] = await Promise.all([
+            readEntryFile(filePath),
+            loadEmbedding(filePath),
+          ]);
+          const loaded = {
+            entryMtimeMs: entryStat.mtimeMs,
+            entrySize: entryStat.size,
+            embeddingMtimeMs: embeddingStat.mtimeMs,
+            embeddingSize: embeddingStat.size,
+            entry,
+            embedding,
+          };
+          entryCache.set(file, loaded);
+          return loaded;
         } catch {
-          continue;
+          return undefined;
         }
+      };
+      const loadedEntries: Awaited<ReturnType<typeof loadEntry>>[] = [];
+      for (let start = 0; start < files.length; start += JOURNAL_LOAD_CONCURRENCY) {
+        loadedEntries.push(...await Promise.all(
+          files.slice(start, start + JOURNAL_LOAD_CONCURRENCY).map(loadEntry),
+        ));
+      }
+
+      for (const loaded of loadedEntries) {
+        if (!loaded) continue;
+        const { entry, embedding: entryEmbedding } = loaded;
 
         // Collect tags before applying filters
         for (const tag of entry.tags) {
@@ -317,7 +380,6 @@ export function createJournalStore(configDir?: string): JournalStore {
         if (query.text) {
           if (queryEmbedding) {
             // Semantic search
-            const entryEmbedding = await loadEmbedding(filePath);
             if (entryEmbedding) {
               score = cosineSimilarity(queryEmbedding, entryEmbedding);
             } else {
@@ -330,6 +392,10 @@ export function createJournalStore(configDir?: string): JournalStore {
             // Text search fallback
             const haystack = `${entry.title}\n${entry.body}`.toLowerCase();
             score = haystack.includes(query.text.toLowerCase()) ? 1 : 0;
+          }
+
+          if (titleMatches(query.text, entry.title)) {
+            score = Math.max(score, 0.75);
           }
 
           if (score <= 0) continue;
