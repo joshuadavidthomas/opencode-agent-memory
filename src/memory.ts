@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { z } from "zod";
 
 import { atomicWriteFile, buildFrontmatterDocument, splitFrontmatter } from "./frontmatter";
@@ -104,6 +104,31 @@ function validateLabel(label: string): string {
   return trimmed;
 }
 
+function notFoundError(
+  scope: MemoryScope,
+  label: string,
+  current: string,
+  oldText: string,
+  editIndex?: number,
+): Error {
+  const which = editIndex === undefined ? "" : ` (edit #${editIndex + 1})`;
+  return new Error(
+    `Old text not found in ${scope}:${label}${which}.\n` +
+      `Searched for:\n${oldText}\n\n` +
+      `Current value of ${scope}:${label} (chars=${current.length}):\n${current}`,
+  );
+}
+
+export type MemoryWriteResult = {
+  scope: MemoryScope;
+  label: string;
+  chars: number;
+  limit: number;
+  overage: number;
+};
+
+export type MemoryEdit = { oldText: string; newText: string };
+
 export type MemoryStore = {
   ensureSeed(): Promise<void>;
   listBlocks(scope: MemoryScope | "all"): Promise<MemoryBlock[]>;
@@ -113,8 +138,20 @@ export type MemoryStore = {
     label: string,
     value: string,
     opts?: { description?: string; limit?: number },
-  ): Promise<void>;
-  replaceInBlock(scope: MemoryScope, label: string, oldText: string, newText: string): Promise<void>;
+  ): Promise<MemoryWriteResult>;
+  replaceInBlock(
+    scope: MemoryScope,
+    label: string,
+    oldText: string,
+    newText: string,
+    opts?: { limit?: number },
+  ): Promise<MemoryWriteResult>;
+  replaceManyInBlock(
+    scope: MemoryScope,
+    label: string,
+    edits: MemoryEdit[],
+    opts?: { limit?: number },
+  ): Promise<MemoryWriteResult>;
 };
 
 const SEED_BLOCKS: Array<{ scope: MemoryScope; label: string }> = [
@@ -282,12 +319,6 @@ export function createMemoryStore(
       const description = (opts?.description ?? existing?.description ?? "").trim();
       const limit = opts?.limit ?? existing?.limit ?? 5000;
 
-      if (value.length > limit) {
-        throw new Error(
-          `Value too large for ${scope}:${safeLabel} (chars=${value.length}, limit=${limit}).`,
-        );
-      }
-
       await writeBlockFile(filePath, {
         label: safeLabel,
         description,
@@ -295,33 +326,59 @@ export function createMemoryStore(
         readOnly: existing?.readOnly ?? false,
         value,
       });
+
+      return {
+        scope,
+        label: safeLabel,
+        chars: value.length,
+        limit,
+        overage: Math.max(0, value.length - limit),
+      };
     },
 
-    async replaceInBlock(scope, label, oldText, newText) {
+    async replaceInBlock(scope, label, oldText, newText, opts) {
+      return this.replaceManyInBlock(scope, label, [{ oldText, newText }], opts);
+    },
+
+    async replaceManyInBlock(scope, label, edits, opts) {
       assertGlobalAllowed(scope);
       const block = await this.getBlock(scope, label);
       if (block.readOnly) {
         throw new Error(`Memory block is read-only: ${scope}:${block.label}`);
       }
 
-      if (!block.value.includes(oldText)) {
-        throw new Error(`Old text not found in ${scope}:${block.label}.`);
+      if (edits.length === 0) {
+        throw new Error(`No edits provided for ${scope}:${block.label}.`);
       }
 
-      const next = block.value.replace(oldText, newText);
-      if (next.length > block.limit) {
-        throw new Error(
-          `Value too large for ${scope}:${block.label} after replace (chars=${next.length}, limit=${block.limit}).`,
-        );
+      let next = block.value;
+      for (const [index, edit] of edits.entries()) {
+        if (edit.oldText.length === 0) {
+          throw new Error(`Edit #${index + 1} has an empty oldText for ${scope}:${block.label}.`);
+        }
+        if (!next.includes(edit.oldText)) {
+          throw notFoundError(scope, block.label, next, edit.oldText, index);
+        }
+        next = next.replace(edit.oldText, edit.newText);
       }
+
+      const limit = opts?.limit ?? block.limit;
 
       await writeBlockFile(block.filePath, {
         label: block.label,
         description: block.description,
-        limit: block.limit,
+        limit,
         readOnly: block.readOnly,
         value: next,
       });
+
+      return {
+        scope,
+        label: block.label,
+        chars: next.length,
+        limit,
+        overage: Math.max(0, next.length - limit),
+      };
     },
   };
 }

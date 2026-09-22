@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-runtime="$repo_root/.amp/runtime/v1"
+runtime="$repo_root/.amp/runtime/v2"
 export HOME="$runtime/home"
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$HOME/.local/share"
@@ -12,8 +12,9 @@ export OPENCODE_CONFIG_DIR="$XDG_CONFIG_HOME/opencode"
 mkdir -p "$OPENCODE_CONFIG_DIR" "$runtime/project"
 
 # Explicit configuration loads only the checkout, without installing a published copy.
-export OPENCODE_CONFIG_CONTENT
-OPENCODE_CONFIG_CONTENT="$(bun -e 'console.log(JSON.stringify({plugin: [process.argv[1]], autoupdate: false}))' "file://$repo_root/src/plugin.ts")"
+bun run --cwd "$repo_root" build >/dev/null
+bun -e 'await Bun.write(process.argv[1], JSON.stringify({plugins: [process.argv[2]]}))' \
+  "$OPENCODE_CONFIG_DIR/opencode.json" "file://$repo_root"
 if [[ ! -f "$OPENCODE_CONFIG_DIR/agent-memory.json" ]]; then
   printf '%s\n' '{"journal":{"enabled":true}}' > "$OPENCODE_CONFIG_DIR/agent-memory.json"
 fi

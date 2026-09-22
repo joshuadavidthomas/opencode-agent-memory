@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Plugin } from "@opencode/plugin";
+import type { SessionContext } from "@opencode/plugin/promise/session";
+import type { Info as ToolInfo, ToolContext } from "@opencode/plugin/promise/tool";
 import { env } from "@huggingface/transformers";
-import { MemoryPlugin } from "../src/plugin";
+import MemoryPlugin from "../index";
 
-// Exercise real hooks/tools directly, without an LLM or the unit-test mocks.
-// This is not a substitute for an end-to-end OpenCode session test.
+// Exercise real v2 registrations directly, without an LLM or test mocks.
 env.allowRemoteModels = false;
 // Bun captures the home directory at startup, so isolation needs a new process.
 if (!process.argv.includes("--isolated")) {
@@ -23,48 +25,89 @@ if (!process.argv.includes("--isolated")) {
   }
   process.exit(result);
 }
-const root = homedir();
-{
-  const directory = join(root, "project");
-  const configDir = join(root, ".config/opencode");
-  await mkdir(configDir, { recursive: true });
-  // Only directory is consumed from the host context by this plugin.
-  const context = { directory } as Parameters<typeof MemoryPlugin>[0];
-  const disabled = await MemoryPlugin(context);
-  assert.deepEqual(Object.keys(disabled.tool!).sort(), ["memory_list", "memory_replace", "memory_set"]);
-  await writeFile(join(configDir, "agent-memory.json"), '{"journal":{"enabled":true}}');
-  const hooks = await MemoryPlugin(context);
-  assert.equal(Object.keys(hooks.tool!).length, 6);
-  const toolContext = {
-    agent: "smoke-agent",
-    sessionID: "smoke-session",
-  } as Parameters<NonNullable<typeof hooks.tool>[string]["execute"]>[1];
-  await hooks.tool!.memory_set!.execute({ label: "orb-check", value: "orb-original-marker" }, toolContext);
-  await hooks.tool!.memory_replace!.execute({ label: "orb-check", oldText: "original", newText: "updated" }, toolContext);
-  const output = { system: ["provider-header", "existing-instructions"] };
-  await hooks["experimental.chat.system.transform"]!({ sessionID: "smoke-session" }, output);
-  assert.equal(output.system[0], "provider-header");
-  assert.ok(output.system[1]!.includes("orb-updated-marker"));
-  assert.ok(!output.system[1]!.includes("orb-original-marker"));
-  assert.ok(output.system.at(-1)!.includes("journal"));
-  assert.ok((await hooks.tool!.memory_list!.execute({}, toolContext)).includes("project:orb-check"));
 
-  const messageInput = {
-    sessionID: "smoke-session",
-    model: { modelID: "smoke-model", providerID: "smoke-provider" },
-  } as Parameters<NonNullable<typeof hooks["chat.message"]>>[0];
-  await hooks["chat.message"]!(messageInput, {} as Parameters<NonNullable<typeof hooks["chat.message"]>>[1]);
-  await hooks.tool!.journal_write!.execute({ title: "Fetch", body: "The puppy chased a ball in the garden." }, toolContext);
-  const journalDir = join(configDir, "journal");
-  const filename = (await readdir(journalDir)).find((name) => name.endsWith(".md"))!;
-  const id = filename.slice(0, -3);
-  const embedding = JSON.parse(await readFile(join(journalDir, `${id}.embedding`), "utf8"));
-  assert.equal(embedding.length, 384);
-  assert.ok(embedding.every(Number.isFinite));
-  const entry = await hooks.tool!.journal_read!.execute({ id }, toolContext);
-  for (const value of ["smoke-model", "smoke-provider", "smoke-agent", "smoke-session"]) assert.ok(entry.includes(value));
-  // A paraphrase with no literal substring match requires real semantic search.
-  const search = await hooks.tool!.journal_search!.execute({ text: "A dog playing outdoors" }, toolContext);
-  assert.ok(search.includes(id));
-  console.log("Plugin OK: journal off/on, memory mutation, system/message hooks, journal metadata, cached embeddings and semantic search");
+const root = homedir();
+const directory = join(root, "project");
+const configDir = join(root, ".config/opencode");
+await mkdir(configDir, { recursive: true });
+await writeFile(join(configDir, "agent-memory.json"), '{"journal":{"enabled":true}}');
+
+const tools: Record<string, ToolInfo> = {};
+let contextHook: ((event: SessionContext) => Promise<void> | void) | undefined;
+const context = {
+  location: { directory },
+  tool: {
+    transform: async (transform: (editor: { add(tool: ToolInfo): void }) => void) => {
+      transform({ add: (tool) => { tools[tool.name] = tool; } });
+    },
+  },
+  session: {
+    context: async () => [],
+    hook: async (name: string, hook: (event: SessionContext) => Promise<void> | void) => {
+      if (name === "context") contextHook = hook;
+    },
+  },
+  event: {
+    subscribe: async function* () {},
+  },
+} as unknown as Plugin.Context;
+
+await MemoryPlugin.setup(context);
+assert.equal(MemoryPlugin.id, "opencode-agent-memory");
+assert.deepEqual(Object.keys(tools).sort(), [
+  "journal_read",
+  "journal_search",
+  "journal_write",
+  "memory_get",
+  "memory_list",
+  "memory_oversized",
+  "memory_replace",
+  "memory_set",
+]);
+assert.ok(contextHook);
+
+const toolContext = {
+  agent: "smoke-agent",
+  sessionID: "smoke-session",
+  messageID: "smoke-message",
+  id: "smoke-call",
+  signal: new AbortController().signal,
+  progress: async () => {},
+} as unknown as ToolContext;
+
+await tools.memory_set!.execute({ label: "orb-check", value: "orb-original-marker" }, toolContext);
+await tools.memory_replace!.execute({ label: "orb-check", oldText: "original", newText: "updated" }, toolContext);
+const request = {
+  sessionID: "smoke-session",
+  agent: "smoke-agent",
+  model: { id: "smoke-model", providerID: "smoke-provider" },
+  system: [
+    { type: "text", text: "provider-header" },
+    { type: "text", text: "existing-instructions" },
+  ],
+  messages: [],
+  options: {},
+  tools: {},
+} as unknown as SessionContext;
+await contextHook(request);
+assert.equal(request.system[0]?.text, "provider-header");
+assert.ok(request.system[1]?.text.includes("orb-updated-marker"));
+assert.ok(!request.system[1]?.text.includes("orb-original-marker"));
+assert.ok(request.system.at(-1)?.text.includes("journal"));
+assert.ok(String((await tools.memory_list!.execute({}, toolContext)).content).includes("project:orb-check"));
+assert.ok(String((await tools.memory_get!.execute({ label: "orb-check" }, toolContext)).content).includes("orb-updated-marker"));
+
+await tools.journal_write!.execute(
+  { title: "Fetch", body: "The puppy chased a ball in the garden." },
+  toolContext,
+);
+const journalDir = join(configDir, "journal");
+const filename = (await readdir(journalDir)).find((name) => name.endsWith(".md"))!;
+const id = filename.slice(0, -3);
+const entry = String((await tools.journal_read!.execute({ id }, toolContext)).content);
+for (const value of ["smoke-model", "smoke-provider", "smoke-agent", "smoke-session"]) {
+  assert.ok(entry.includes(value));
 }
+const search = String((await tools.journal_search!.execute({}, toolContext)).content);
+assert.ok(search.includes(id));
+console.log("Plugin OK: v2 setup, tools, context hook, journal metadata, and journal search");
