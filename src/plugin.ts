@@ -125,9 +125,9 @@ const MemoryPlugin = Plugin.define({
           renderMemoryBlocks(await store.listBlocks("all"), { disableGlobal }),
         );
         if (xml) {
-          // OpenCode v2 joins these parts into one provider system message.
-          const insertAt = event.system.length > 0 ? 1 : 0;
-          event.system.splice(insertAt, 0, { type: "text", text: xml });
+          // Append after the stable prefix so memory edits only invalidate the
+          // trailing system chunk — not tools / core instructions (prompt cache).
+          event.system.push({ type: "text", text: xml });
         }
       }
 

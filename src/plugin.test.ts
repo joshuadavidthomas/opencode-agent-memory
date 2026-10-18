@@ -75,6 +75,10 @@ function request(system = [
   } as unknown as SessionContext;
 }
 
+function memoryText(system: Array<{ text?: string }>): string {
+  return system.find((part) => part.text?.includes("<memory_blocks>"))?.text ?? "";
+}
+
 describe("memory plugin configuration", () => {
   let home: string;
   let directory: string;
@@ -118,8 +122,8 @@ describe("memory plugin configuration", () => {
     const event = request();
     await contextHook(event);
     expect(event.system[0]?.text).toBe("provider header");
-    expect(event.system[2]?.text).toBe("existing instructions");
-    const prompt = event.system[1]?.text ?? "";
+    expect(event.system[1]?.text).toBe("existing instructions");
+    const prompt = memoryText(event.system);
     expect(prompt).toContain("PROJECT_ONLY_FIXTURE");
     expect(prompt.includes("GLOBAL_ONLY_FIXTURE")).toBe(globalEnabled);
     expect(prompt.includes("scope=global")).toBe(globalEnabled);
@@ -134,7 +138,10 @@ describe("memory plugin configuration", () => {
     expect(tools.memory_get).toBeDefined();
     expect(tools.memory_oversized).toBeDefined();
     if (name === "journal enabled") {
-      expect(event.system[3]?.text).toContain("Performance");
+      expect(event.system.at(-1)?.text).toContain("Performance");
+      expect(event.system.at(-2)?.text).toContain("<memory_blocks>");
+    } else {
+      expect(event.system.at(-1)?.text).toContain("<memory_blocks>");
     }
     for (const toolName of ["memory_list", "memory_set", "memory_replace"]) {
       const scopes = scopeValues(tools[toolName]!);
@@ -204,17 +211,17 @@ describe("memory plugin configuration", () => {
 
     const first = request(undefined, "session-a");
     await contextHook(first);
-    expect(first.system[1]?.text).toContain("snapshot one");
+    expect(memoryText(first.system)).toContain("snapshot one");
 
     await store.setBlock("project", "project", "snapshot two");
     const sameSession = request(undefined, "session-a");
     await contextHook(sameSession);
-    expect(sameSession.system[1]?.text).toContain("snapshot one");
-    expect(sameSession.system[1]?.text).not.toContain("snapshot two");
+    expect(memoryText(sameSession.system)).toContain("snapshot one");
+    expect(memoryText(sameSession.system)).not.toContain("snapshot two");
 
     const newSession = request(undefined, "session-b");
     await contextHook(newSession);
-    expect(newSession.system[1]?.text).toContain("snapshot two");
+    expect(memoryText(newSession.system)).toContain("snapshot two");
   });
 
   test("refreshes from durable context immediately after compaction", async () => {
@@ -235,8 +242,8 @@ describe("memory plugin configuration", () => {
 
     const refreshed = request(undefined, "session-a");
     await contextHook(refreshed);
-    expect(refreshed.system[1]?.text).toContain("after compaction");
-    expect(refreshed.system[1]?.text).not.toContain("before compaction");
+    expect(memoryText(refreshed.system)).toContain("after compaction");
+    expect(memoryText(refreshed.system)).not.toContain("before compaction");
   });
 
   test("does not reuse a global snapshot after isolation is enabled", async () => {
@@ -247,7 +254,7 @@ describe("memory plugin configuration", () => {
     const first = await setupPlugin(directory);
     const globalEvent = request(undefined, "session-restarted");
     await first.contextHook(globalEvent);
-    expect(globalEvent.system[1]?.text).toContain("GLOBAL_SNAPSHOT_FIXTURE");
+    expect(memoryText(globalEvent.system)).toContain("GLOBAL_SNAPSHOT_FIXTURE");
     await first.cleanup?.();
 
     await fs.writeFile(
@@ -258,9 +265,9 @@ describe("memory plugin configuration", () => {
     const isolatedEvent = request(undefined, "session-restarted");
     await restarted.contextHook(isolatedEvent);
 
-    expect(isolatedEvent.system[1]?.text).toContain("PROJECT_SNAPSHOT_FIXTURE");
-    expect(isolatedEvent.system[1]?.text).not.toContain("GLOBAL_SNAPSHOT_FIXTURE");
-    expect(isolatedEvent.system[1]?.text).toContain("Only project-scoped memory is available");
+    expect(memoryText(isolatedEvent.system)).toContain("PROJECT_SNAPSHOT_FIXTURE");
+    expect(memoryText(isolatedEvent.system)).not.toContain("GLOBAL_SNAPSHOT_FIXTURE");
+    expect(memoryText(isolatedEvent.system)).toContain("Only project-scoped memory is available");
     await restarted.cleanup?.();
   });
 
