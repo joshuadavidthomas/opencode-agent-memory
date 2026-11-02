@@ -18,6 +18,10 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Fixed
+
+- Memory blocks and the journal note are now injected into compaction and generate requests, keeping the system prompt identical so the provider prompt cache is reused
+
 ## [0.3.0]
 
 ### Added
