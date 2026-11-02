@@ -29,6 +29,8 @@ async function setupPlugin(
 ) {
   const tools: Record<string, ToolInfo> = {};
   let contextHook: ContextHook | undefined;
+  let compactionHook: ContextHook | undefined;
+  let generateHook: ContextHook | undefined;
   const context = {
     location: { directory },
     tool: {
@@ -41,6 +43,8 @@ async function setupPlugin(
         sessionContexts.get(String(sessionID)) ?? [],
       hook: async (name: string, hook: ContextHook) => {
         if (name === "context") contextHook = hook;
+        if (name === "compaction") compactionHook = hook;
+        if (name === "generate") generateHook = hook;
       },
     },
     event: {
@@ -50,7 +54,9 @@ async function setupPlugin(
 
   const cleanup = await MemoryPlugin.setup(context);
   if (!contextHook) throw new Error("context hook was not registered");
-  return { tools, contextHook, cleanup };
+  if (!compactionHook) throw new Error("compaction hook was not registered");
+  if (!generateHook) throw new Error("generate hook was not registered");
+  return { tools, contextHook, compactionHook, generateHook, cleanup };
 }
 
 function scopeValues(tool: ToolInfo): string[] {
@@ -237,6 +243,29 @@ describe("memory plugin configuration", () => {
     await contextHook(refreshed);
     expect(refreshed.system[1]?.text).toContain("after compaction");
     expect(refreshed.system[1]?.text).not.toContain("before compaction");
+  });
+
+  test("compaction and generate hooks inject the same blocks as the context hook", async () => {
+    const store = createMemoryStore(directory);
+    await store.ensureSeed();
+    await store.setBlock("project", "project", "cache-stable block");
+    const { contextHook, compactionHook, generateHook } = await setupPlugin(directory);
+
+    const primary = request(undefined, "session-a");
+    await contextHook(primary);
+
+    const compaction = request(undefined, "session-a");
+    await compactionHook(compaction);
+
+    const generate = request(undefined, "session-a");
+    await generateHook(generate);
+
+    // The compaction and generate requests must carry a byte-identical system
+    // prompt to the primary request, or the provider prompt cache misses on a
+    // re-prefill.
+    expect(compaction.system).toEqual(primary.system);
+    expect(generate.system).toEqual(primary.system);
+    expect(compaction.system[1]?.text).toContain("cache-stable block");
   });
 
   test("does not reuse a global snapshot after isolation is enabled", async () => {

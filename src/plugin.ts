@@ -1,4 +1,5 @@
 import { Plugin } from "@opencode/plugin";
+import type { SessionContext } from "@opencode/plugin/promise/session";
 import type { Info as ToolInfo } from "@opencode/plugin/promise/tool";
 
 import { generateEmbedding } from "./embeddings";
@@ -103,7 +104,11 @@ const MemoryPlugin = Plugin.define({
       for (const tool of tools) editor.add(tool);
     });
 
-    await ctx.session.hook("context", async (event) => {
+    // Shared by the "context", "compaction" and "generate" hooks. All must
+    // inject the same blocks so the provider system prompt stays
+    // byte-identical across a session; otherwise the prompt cache misses on
+    // a full re-prefill.
+    const injectMemory = async (event: SessionContext) => {
       if (journalEnabled) {
         journalModels.set(String(event.sessionID), {
           model: event.model.id,
@@ -134,7 +139,14 @@ const MemoryPlugin = Plugin.define({
       if (journalSystemNote) {
         event.system.push({ type: "text", text: journalSystemNote });
       }
-    });
+    };
+
+    await ctx.session.hook("context", injectMemory);
+    // OpenCode fires "compaction" (not "context") for the compaction request,
+    // and "generate" for session.generate requests. The built-in plugins
+    // register one shared callback on all three, so the injection must too.
+    await ctx.session.hook("compaction", injectMemory);
+    await ctx.session.hook("generate", injectMemory);
 
     if (eventsAbort && eventsTask) {
       return async () => {
