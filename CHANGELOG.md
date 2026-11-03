@@ -21,6 +21,7 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 ### Fixed
 
 - Memory blocks and the journal note are now injected into compaction and generate requests, keeping the system prompt identical so the provider prompt cache is reused
+- Concurrent writes to the same memory block no longer fail with `ENOENT`; each write now uses its own temp file
 
 ## [0.3.0]
 
