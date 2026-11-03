@@ -71,11 +71,12 @@ describe("atomicWriteFile", () => {
   });
 
   test("removes the temp file when the write fails", async () => {
-    // A directory cannot be written as a file, so the write step throws.
-    const missing = path.join(directory, "missing", "block.md");
+    // A directory sits at the target path, so the temp file is written but the
+    // rename onto the directory throws.
+    await fs.mkdir(file);
 
-    await expect(atomicWriteFile(missing, "hello")).rejects.toThrow();
+    await expect(atomicWriteFile(file, "hello")).rejects.toThrow();
 
-    expect(await fs.readdir(directory)).toEqual([]);
+    expect(await fs.readdir(directory)).toEqual(["block.md"]);
   });
 });
