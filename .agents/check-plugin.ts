@@ -65,6 +65,13 @@ assert.deepEqual(Object.keys(tools).sort(), [
   "memory_set",
 ]);
 assert.ok(contextHook);
+for (const tool of Object.values(tools)) {
+  assert.equal(
+    tool.options?.codemode,
+    false,
+    `${tool.name} must be a direct tool so agents can call it without Code Mode`,
+  );
+}
 
 const toolContext = {
   agent: "smoke-agent",
