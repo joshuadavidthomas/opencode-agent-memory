@@ -18,6 +18,10 @@ and this project attempts to adhere to [Semantic Versioning](https://semver.org/
 
 ## [Unreleased]
 
+### Fixed
+
+- Memory and journal tools now register with `codemode: false`, so agents call them directly instead of failing with `No tool named "memory_replace" is currently available` in OpenCode v2
+
 ## [0.3.1]
 
 ### Fixed

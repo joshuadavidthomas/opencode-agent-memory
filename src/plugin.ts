@@ -100,8 +100,12 @@ const MemoryPlugin = Plugin.define({
       })();
     }
 
+    // Memory and journal tools are meant to be called directly by the agent
+    // (the injected prompt names them), so keep them out of Code Mode.
+    // OpenCode v2 routes plugin tools through `execute` unless a tool sets
+    // `codemode: false`.
     await ctx.tool.transform((editor) => {
-      for (const tool of tools) editor.add(tool);
+      for (const tool of tools) editor.add({ ...tool, options: { codemode: false } });
     });
 
     // Shared by the "context", "compaction" and "generate" hooks. All must
